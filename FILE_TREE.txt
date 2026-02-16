@@ -1,0 +1,80 @@
+.
+├── .env.example
+├── .eslintrc.json
+├── .gitignore
+├── FILE_TREE.txt
+├── README.md
+├── next-env.d.ts
+├── next.config.mjs
+├── package.json
+├── postcss.config.js
+├── prisma
+│   └── schema.prisma
+├── src
+│   ├── app
+│   │   ├── api
+│   │   │   ├── auth
+│   │   │   │   └── [...nextauth]
+│   │   │   │       └── route.ts
+│   │   │   ├── portfolio
+│   │   │   │   ├── refresh
+│   │   │   │   │   └── route.ts
+│   │   │   │   └── snapshot
+│   │   │   │       └── route.ts
+│   │   │   └── wallets
+│   │   │       ├── link
+│   │   │       │   └── route.ts
+│   │   │       ├── list
+│   │   │       │   └── route.ts
+│   │   │       └── verify
+│   │   │           └── route.ts
+│   │   ├── dashboard
+│   │   │   └── page.tsx
+│   │   ├── globals.css
+│   │   ├── layout.tsx
+│   │   ├── page.tsx
+│   │   └── wallets
+│   │       └── page.tsx
+│   ├── components
+│   │   ├── auth-buttons.tsx
+│   │   ├── dashboard
+│   │   │   └── dashboard-client.tsx
+│   │   └── providers.tsx
+│   ├── lib
+│   │   ├── algorand
+│   │   │   ├── indexer.ts
+│   │   │   └── types.ts
+│   │   ├── api-client.ts
+│   │   ├── architecture.ts
+│   │   ├── audit.ts
+│   │   ├── auth.ts
+│   │   ├── db.ts
+│   │   ├── defi
+│   │   │   ├── adapters
+│   │   │   │   ├── folks.ts
+│   │   │   │   ├── reti.ts
+│   │   │   │   └── tinyman.ts
+│   │   │   ├── index.ts
+│   │   │   └── types.ts
+│   │   ├── env.ts
+│   │   ├── portfolio
+│   │   │   ├── lots.ts
+│   │   │   ├── parser.ts
+│   │   │   └── snapshot.ts
+│   │   ├── price
+│   │   │   └── provider.ts
+│   │   ├── rate-limit.ts
+│   │   ├── utils.ts
+│   │   └── verification
+│   │       ├── challenge.ts
+│   │       └── verify.ts
+│   ├── middleware.ts
+│   └── types
+│       └── next-auth.d.ts
+├── tailwind.config.ts
+├── tests
+│   ├── lots.test.ts
+│   ├── setup.ts
+│   └── snapshot.test.ts
+├── tsconfig.json
+└── vitest.config.ts

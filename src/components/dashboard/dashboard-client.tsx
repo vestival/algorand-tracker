@@ -1,0 +1,399 @@
+"use client";
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
+import { useState } from "react";
+
+import { UserMenu } from "@/components/auth-buttons";
+import { apiFetch } from "@/lib/api-client";
+import { formatUsd, shortAddress } from "@/lib/utils";
+
+type SnapshotResponse = {
+  snapshot: {
+    computedAt: string;
+    totals: {
+      valueUsd: number;
+      costBasisUsd: number;
+      realizedPnlUsd: number;
+      unrealizedPnlUsd: number;
+    };
+    assets: Array<{
+      assetKey: string;
+      assetName?: string;
+      balance: number;
+      priceUsd: number | null;
+      valueUsd: number | null;
+      costBasisUsd: number;
+      realizedPnlUsd: number;
+      unrealizedPnlUsd: number | null;
+      hasPrice: boolean;
+    }>;
+    transactions: Array<{
+      txId: string;
+      ts: number;
+      wallet: string;
+      counterparty: string | null;
+      txType: "payment" | "asset-transfer";
+      direction: "in" | "out" | "self";
+      assetKey: string;
+      assetName: string;
+      amount: number;
+      unitPriceUsd: number | null;
+      valueUsd: number | null;
+      feeAlgo: number;
+      feeUsd: number;
+    }>;
+    wallets: Array<{
+      wallet: string;
+      totalValueUsd: number;
+      totalCostBasisUsd: number;
+      totalRealizedPnlUsd: number;
+      totalUnrealizedPnlUsd: number;
+    }>;
+    defiPositions: Array<{
+      protocol: string;
+      wallet: string;
+      positionType: string;
+      valueUsd?: number | null;
+      estimated: boolean;
+    }>;
+    yieldEstimate: {
+      estimatedAprPct: number | null;
+      estimated: boolean;
+      note: string;
+    };
+  } | null;
+};
+
+const tabs = ["Overview", "Transactions", "DeFi Positions", "Wallets", "Settings"] as const;
+
+export function DashboardClient() {
+  const [activeTab, setActiveTab] = useState<(typeof tabs)[number]>("Overview");
+  const [hideZeroBalances, setHideZeroBalances] = useState<boolean>(false);
+  const [privacyMode, setPrivacyMode] = useState<boolean>(false);
+  const [txDirectionFilter, setTxDirectionFilter] = useState<"all" | "in" | "out" | "self">("all");
+  const [txTypeFilter, setTxTypeFilter] = useState<"all" | "payment" | "asset-transfer">("all");
+  const [txSearch, setTxSearch] = useState("");
+  const queryClient = useQueryClient();
+
+  const snapshotQuery = useQuery({
+    queryKey: ["portfolio-snapshot"],
+    queryFn: () => apiFetch<SnapshotResponse>("/api/portfolio/snapshot")
+  });
+
+  const refreshMutation = useMutation({
+    mutationFn: () => apiFetch<{ ok: boolean }>("/api/portfolio/refresh", { method: "POST", body: "{}" }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["portfolio-snapshot"] });
+    }
+  });
+
+  const snapshot = snapshotQuery.data?.snapshot;
+  const visibleAssets = (snapshot?.assets ?? []).filter((asset) => !hideZeroBalances || Math.abs(asset.balance) > 0);
+  const filteredTransactions = (snapshot?.transactions ?? []).filter((tx) => {
+    if (txDirectionFilter !== "all" && tx.direction !== txDirectionFilter) return false;
+    if (txTypeFilter !== "all" && tx.txType !== txTypeFilter) return false;
+    if (!txSearch.trim()) return true;
+
+    const needle = txSearch.trim().toLowerCase();
+    return (
+      tx.txId.toLowerCase().includes(needle) ||
+      tx.assetKey.toLowerCase().includes(needle) ||
+      tx.assetName.toLowerCase().includes(needle) ||
+      tx.wallet.toLowerCase().includes(needle) ||
+      (tx.counterparty ?? "").toLowerCase().includes(needle)
+    );
+  });
+  const maskNumber = (value: number) => (privacyMode ? "******" : value.toLocaleString());
+  const maskUsd = (value: number | null | undefined) => (privacyMode ? "******" : formatUsd(value));
+
+  return (
+    <main className="min-h-screen bg-slate-950 text-slate-100">
+      <div className="mx-auto max-w-6xl p-4 md:p-8">
+        <header className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold">Algorand Portfolio Dashboard</h1>
+            <p className="text-sm text-slate-400">Consolidated balances, FIFO cost basis, PnL, and DeFi estimates.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Link className="rounded-md border border-slate-700 px-3 py-2 text-sm hover:bg-slate-800" href="/wallets">
+              Manage wallets
+            </Link>
+            <button
+              className="rounded-md border border-slate-700 px-3 py-2 text-sm hover:bg-slate-800"
+              onClick={() => setPrivacyMode((prev) => !prev)}
+              type="button"
+            >
+              {privacyMode ? "Show amounts" : "Hide amounts"}
+            </button>
+            <button
+              className="rounded-md bg-brand-500 px-3 py-2 text-sm hover:bg-brand-700 disabled:opacity-70"
+              disabled={refreshMutation.isPending}
+              onClick={() => refreshMutation.mutate()}
+              type="button"
+            >
+              {refreshMutation.isPending ? "Refreshing..." : "Refresh"}
+            </button>
+            <UserMenu />
+          </div>
+        </header>
+
+        <div className="mb-6 grid gap-3 md:grid-cols-4">
+          <Card
+            label="Total Value"
+            value={maskUsd(snapshot?.totals.valueUsd)}
+            helpText="Current USD value of priced assets across all linked wallets. Assets without prices are excluded."
+          />
+          <Card
+            label="Cost Basis"
+            value={maskUsd(snapshot?.totals.costBasisUsd)}
+            helpText="Remaining acquisition cost of current holdings using FIFO lots (fees included per policy)."
+          />
+          <Card
+            label="Realized PnL"
+            value={maskUsd(snapshot?.totals.realizedPnlUsd)}
+            helpText="Profit/loss from assets already sold or disposed. Formula: proceeds minus disposed FIFO cost basis."
+          />
+          <Card
+            label="Unrealized PnL"
+            value={maskUsd(snapshot?.totals.unrealizedPnlUsd)}
+            helpText="Paper profit/loss on current holdings. Formula: current value minus remaining FIFO cost basis."
+          />
+        </div>
+
+        <nav className="mb-4 flex flex-wrap gap-2">
+          {tabs.map((tab) => (
+            <button
+              className={`rounded-md px-3 py-1.5 text-sm ${
+                activeTab === tab ? "bg-brand-700 text-white" : "bg-slate-800 text-slate-300"
+              }`}
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              type="button"
+            >
+              {tab}
+            </button>
+          ))}
+        </nav>
+
+        {refreshMutation.isError && (
+          <div className="mb-4 rounded-md border border-rose-700/60 bg-rose-950/40 px-3 py-2 text-sm text-rose-200">
+            Refresh failed. {(refreshMutation.error as Error)?.message ?? "Check API/env configuration and try again."}
+          </div>
+        )}
+
+        {activeTab === "Overview" && (
+          <div className="mb-3 flex items-center gap-2 text-sm text-slate-300">
+            <input
+              id="hide-zero-balances"
+              type="checkbox"
+              checked={hideZeroBalances}
+              onChange={(e) => setHideZeroBalances(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-brand-500 focus:ring-brand-500"
+            />
+            <label htmlFor="hide-zero-balances" className="cursor-pointer">
+              Hide 0 balance tokens
+            </label>
+          </div>
+        )}
+
+        {activeTab === "Overview" && (
+          <section className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-900">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-800 text-slate-300">
+                <tr>
+                  <th className="px-4 py-3">Asset</th>
+                  <th className="px-4 py-3">Balance</th>
+                  <th className="px-4 py-3">Price</th>
+                  <th className="px-4 py-3">Value</th>
+                  <th className="px-4 py-3">Cost Basis</th>
+                  <th className="px-4 py-3">Unrealized</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleAssets.map((asset) => (
+                  <tr className="border-t border-slate-800" key={asset.assetKey}>
+                    <td className="px-4 py-3">
+                      <div className="font-medium">{asset.assetName ?? asset.assetKey}</div>
+                      {(asset.assetName ?? asset.assetKey) !== asset.assetKey && (
+                        <div className="text-xs text-slate-400">{asset.assetKey}</div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">{maskNumber(asset.balance)}</td>
+                    <td className="px-4 py-3">{asset.priceUsd === null ? "no price" : maskUsd(asset.priceUsd)}</td>
+                    <td className="px-4 py-3">{maskUsd(asset.valueUsd)}</td>
+                    <td className="px-4 py-3">{maskUsd(asset.costBasisUsd)}</td>
+                    <td className="px-4 py-3">{maskUsd(asset.unrealizedPnlUsd)}</td>
+                  </tr>
+                ))}
+                {!visibleAssets.length && (
+                  <tr>
+                    <td className="px-4 py-4 text-slate-400" colSpan={6}>
+                      No assets to show. Disable filter or refresh snapshot.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </section>
+        )}
+
+        {activeTab === "Transactions" && (
+          <section className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-800 bg-slate-900 p-3">
+              <select
+                className="rounded-md border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-slate-200"
+                value={txDirectionFilter}
+                onChange={(e) => setTxDirectionFilter(e.target.value as "all" | "in" | "out" | "self")}
+              >
+                <option value="all">All directions</option>
+                <option value="in">Inbound</option>
+                <option value="out">Outbound</option>
+                <option value="self">Internal</option>
+              </select>
+              <select
+                className="rounded-md border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-slate-200"
+                value={txTypeFilter}
+                onChange={(e) => setTxTypeFilter(e.target.value as "all" | "payment" | "asset-transfer")}
+              >
+                <option value="all">All types</option>
+                <option value="payment">Payment</option>
+                <option value="asset-transfer">Asset transfer</option>
+              </select>
+              <input
+                className="min-w-[240px] flex-1 rounded-md border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-slate-200 placeholder:text-slate-500"
+                placeholder="Search tx id, asset, wallet, counterparty"
+                value={txSearch}
+                onChange={(e) => setTxSearch(e.target.value)}
+              />
+              <div className="text-xs text-slate-400">{filteredTransactions.length} rows</div>
+            </div>
+
+            <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-900">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-slate-800 text-slate-300">
+                  <tr>
+                    <th className="px-4 py-3">Time</th>
+                    <th className="px-4 py-3">Type</th>
+                    <th className="px-4 py-3">Direction</th>
+                    <th className="px-4 py-3">Asset</th>
+                    <th className="px-4 py-3">Amount</th>
+                    <th className="px-4 py-3">Value</th>
+                    <th className="px-4 py-3">Fee</th>
+                    <th className="px-4 py-3">Wallet</th>
+                    <th className="px-4 py-3">Counterparty</th>
+                    <th className="px-4 py-3">Tx ID</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredTransactions.map((tx) => (
+                    <tr className="border-t border-slate-800" key={`${tx.txId}-${tx.assetKey}-${tx.amount}`}>
+                      <td className="px-4 py-3 text-slate-300">{new Date(tx.ts * 1000).toLocaleString()}</td>
+                      <td className="px-4 py-3 text-slate-300">{tx.txType}</td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`rounded px-2 py-1 text-xs ${
+                            tx.direction === "in"
+                              ? "bg-emerald-900/50 text-emerald-300"
+                              : tx.direction === "out"
+                                ? "bg-rose-900/50 text-rose-300"
+                                : "bg-slate-700 text-slate-200"
+                          }`}
+                        >
+                          {tx.direction}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-slate-100">{tx.assetName}</div>
+                        {tx.assetName !== tx.assetKey && <div className="text-xs text-slate-400">{tx.assetKey}</div>}
+                      </td>
+                      <td className="px-4 py-3 text-slate-300">{maskNumber(tx.amount)}</td>
+                      <td className="px-4 py-3 text-slate-300">{maskUsd(tx.valueUsd)}</td>
+                      <td className="px-4 py-3 text-slate-300">{maskUsd(tx.feeUsd)}</td>
+                      <td className="px-4 py-3 text-slate-300">{shortAddress(tx.wallet)}</td>
+                      <td className="px-4 py-3 text-slate-300">{tx.counterparty ? shortAddress(tx.counterparty) : "-"}</td>
+                      <td className="px-4 py-3 text-slate-300">{shortAddress(tx.txId)}</td>
+                    </tr>
+                  ))}
+                  {!filteredTransactions.length && (
+                    <tr>
+                      <td className="px-4 py-4 text-slate-400" colSpan={10}>
+                        No transactions match your filters.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {activeTab === "DeFi Positions" && (
+          <section className="rounded-xl border border-slate-800 bg-slate-900 p-4">
+            <p className="mb-3 text-sm text-slate-300">
+              Yield estimate: {snapshot?.yieldEstimate.estimatedAprPct ?? "-"}% (estimated)
+            </p>
+            <p className="mb-4 text-xs text-slate-400">{snapshot?.yieldEstimate.note}</p>
+            <div className="space-y-2">
+              {snapshot?.defiPositions.map((p, i) => (
+                <div className="rounded-md border border-slate-800 p-3 text-sm" key={`${p.protocol}-${i}`}>
+                  <div className="font-medium">
+                    {p.protocol} / {p.positionType}
+                  </div>
+                  <div className="text-slate-400">Wallet: {shortAddress(p.wallet)}</div>
+                  <div className="text-slate-400">Value: {maskUsd(p.valueUsd ?? null)}</div>
+                </div>
+              ))}
+              {!snapshot?.defiPositions.length && <p className="text-sm text-slate-400">No DeFi positions detected.</p>}
+            </div>
+          </section>
+        )}
+
+        {activeTab === "Wallets" && (
+          <section className="rounded-xl border border-slate-800 bg-slate-900 p-4">
+            <div className="space-y-2">
+              {snapshot?.wallets.map((w) => (
+                <div className="rounded-md border border-slate-800 p-3 text-sm" key={w.wallet}>
+                  <div className="font-medium">{shortAddress(w.wallet)}</div>
+                  <div className="text-slate-400">Value: {maskUsd(w.totalValueUsd)}</div>
+                  <div className="text-slate-400">Cost basis: {maskUsd(w.totalCostBasisUsd)}</div>
+                </div>
+              ))}
+              {!snapshot?.wallets.length && <p className="text-sm text-slate-400">No wallets linked.</p>}
+            </div>
+          </section>
+        )}
+
+        {activeTab === "Settings" && (
+          <section className="rounded-xl border border-slate-800 bg-slate-900 p-4 text-sm text-slate-300">
+            Cost basis method: FIFO. Average-cost mode is designed for a future extension.
+          </section>
+        )}
+
+        <p className="mt-4 text-xs text-slate-500">
+          Last snapshot: {snapshot?.computedAt ? new Date(snapshot.computedAt).toLocaleString() : "none"}
+        </p>
+      </div>
+    </main>
+  );
+}
+
+function Card({ label, value, helpText }: { label: string; value: string; helpText: string }) {
+  return (
+    <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
+      <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-400">
+        <span>{label}</span>
+        <span
+          className="group relative inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-slate-600 text-[10px] font-bold normal-case text-slate-300"
+          aria-label={`${label} info`}
+        >
+          i
+          <span className="pointer-events-none absolute left-1/2 top-5 z-20 hidden w-64 -translate-x-1/2 rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-[11px] font-normal normal-case tracking-normal text-slate-200 shadow-lg group-hover:block">
+            {helpText}
+          </span>
+        </span>
+      </div>
+      <div className="mt-1 text-xl font-semibold">{value}</div>
+    </div>
+  );
+}

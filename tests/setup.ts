@@ -1,0 +1,9 @@
+process.env.DATABASE_URL = process.env.DATABASE_URL ?? "postgresql://user:pass@localhost:5432/db?schema=public";
+process.env.NEXTAUTH_URL = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+process.env.NEXTAUTH_SECRET = process.env.NEXTAUTH_SECRET ?? "secret";
+process.env.GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID ?? "id";
+process.env.GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET ?? "secret";
+process.env.ALGORAND_INDEXER_URL = process.env.ALGORAND_INDEXER_URL ?? "https://mainnet-idx.algonode.cloud";
+process.env.ALGORAND_VERIFICATION_RECEIVER = process.env.ALGORAND_VERIFICATION_RECEIVER ?? "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY5HFKQ";
+process.env.PRICE_API_URL = process.env.PRICE_API_URL ?? "https://api.coingecko.com/api/v3/simple/price";
+process.env.ASA_PRICE_MAP_JSON = process.env.ASA_PRICE_MAP_JSON ?? "{}";
