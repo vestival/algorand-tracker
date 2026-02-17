@@ -14,6 +14,13 @@ All notable changes to the Algorand Portfolio Tracker are documented in this fil
 ### Changed
 - Complete rewrite of README.md with architecture diagram, annotated project structure, environment variable tables, expanded feature descriptions, and security documentation
 - Added this CHANGELOG.md
+- Hardened rate limiting with persistent audit-log-backed checks (with in-memory fallback on transient DB failures), and switched API routes to async rate-limit enforcement (2026-02-17 04:36 MST)
+- Corrected per-wallet FIFO attribution to include inbound acquisition lots (receiver-side events), fixing wallet-level cost basis/PnL accuracy (2026-02-17 04:36 MST)
+
+### Fixed
+- Disabled NextAuth debug logging in production even if `NEXTAUTH_DEBUG=true`, preventing sensitive auth/provider internals from being written to production logs (2026-02-17 04:36 MST)
+- Added `*.tsbuildinfo` to `.gitignore` and untracked committed `tsconfig.tsbuildinfo` build artifact (2026-02-17 04:36 MST)
+- Added regression tests for wallet-level inbound FIFO attribution and rate-limit behavior (allow/block + fallback path) (2026-02-17 04:36 MST)
 
 ## [0.1.0] - 2026-02-16
 

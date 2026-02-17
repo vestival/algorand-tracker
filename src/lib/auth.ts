@@ -11,7 +11,8 @@ export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
   // Required for next-auth middleware to authorize protected routes.
   session: { strategy: "jwt" },
-  debug: env.NEXTAUTH_DEBUG,
+  // Avoid leaking provider internals (including sensitive values) in production logs.
+  debug: env.NEXTAUTH_DEBUG && process.env.NODE_ENV !== "production",
   providers: [
     GoogleProvider({
       clientId: env.GOOGLE_CLIENT_ID,

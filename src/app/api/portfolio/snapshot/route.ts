@@ -19,7 +19,13 @@ export async function GET(request: Request) {
   }
 
   const ip = getClientIp(request);
-  const allowed = checkRateLimit(`portfolio-snapshot:${session.user.id}:${ip}`, env.PUBLIC_RATE_LIMIT_WINDOW_MS, env.PUBLIC_RATE_LIMIT_MAX);
+  const allowed = await checkRateLimit({
+    key: `portfolio-snapshot:${session.user.id}:${ip}`,
+    userId: session.user.id,
+    ip,
+    windowMs: env.PUBLIC_RATE_LIMIT_WINDOW_MS,
+    max: env.PUBLIC_RATE_LIMIT_MAX
+  });
   if (!allowed) {
     return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
   }

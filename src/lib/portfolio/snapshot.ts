@@ -230,7 +230,28 @@ export async function computePortfolioSnapshot(wallets: string[], deps: Snapshot
 
   const walletSummaries: WalletBreakdown[] = [];
   for (const wallet of wallets) {
-    const walletEvents = events.filter((e) => txns.find((t) => t.id === e.txId)?.sender === wallet);
+    const walletEvents = events.filter((event) => {
+      const tx = txMap.get(event.txId);
+      if (!tx) {
+        return false;
+      }
+
+      if (tx.paymentTransaction) {
+        if (event.side === "sell") {
+          return tx.sender === wallet;
+        }
+        return tx.paymentTransaction.receiver === wallet;
+      }
+
+      if (tx.assetTransferTransaction) {
+        if (event.side === "sell") {
+          return tx.sender === wallet;
+        }
+        return tx.assetTransferTransaction.receiver === wallet;
+      }
+
+      return false;
+    });
     const walletFifo = runFifo(walletEvents);
     const totalCostBasisUsd = Object.values(walletFifo).reduce((sum, x) => sum + x.remainingCostUsd, 0);
     const totalRealizedPnlUsd = Object.values(walletFifo).reduce((sum, x) => sum + x.realizedPnlUsd, 0);
