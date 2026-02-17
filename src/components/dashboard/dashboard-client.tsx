@@ -77,8 +77,17 @@ type SnapshotResponse = {
   } | null;
 };
 
+type HistoryResponse = {
+  history: Array<{
+    ts: string;
+    valueUsd: number;
+  }>;
+};
+
 type DashboardTab = "overview" | "transactions" | "defi" | "settings";
 const tabs = ["overview", "transactions", "defi"] as const;
+const historyRanges = ["7d", "30d", "90d", "max"] as const;
+type HistoryRange = (typeof historyRanges)[number];
 
 export function DashboardClient() {
   const { m } = useLanguage();
@@ -91,6 +100,7 @@ export function DashboardClient() {
   const [txTypeFilter, setTxTypeFilter] = useState<"all" | "payment" | "asset-transfer">("all");
   const [txSearch, setTxSearch] = useState("");
   const [defiSearch, setDefiSearch] = useState("");
+  const [historyRange, setHistoryRange] = useState<HistoryRange>("30d");
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -114,11 +124,16 @@ export function DashboardClient() {
     queryKey: ["portfolio-snapshot"],
     queryFn: () => apiFetch<SnapshotResponse>("/api/portfolio/snapshot")
   });
+  const historyQuery = useQuery({
+    queryKey: ["portfolio-history"],
+    queryFn: () => apiFetch<HistoryResponse>("/api/portfolio/history")
+  });
 
   const refreshMutation = useMutation({
     mutationFn: () => apiFetch<{ ok: boolean }>("/api/portfolio/refresh", { method: "POST", body: "{}" }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["portfolio-snapshot"] });
+      await queryClient.invalidateQueries({ queryKey: ["portfolio-history"] });
     }
   });
   const deleteAccountMutation = useMutation({
@@ -129,6 +144,16 @@ export function DashboardClient() {
   });
 
   const snapshot = snapshotQuery.data?.snapshot;
+  const history = historyQuery.data?.history ?? [];
+  const filteredHistory = filterHistoryByRange(history, historyRange);
+  const historyStartValue = filteredHistory[0]?.valueUsd ?? null;
+  const historyEndValue = filteredHistory[filteredHistory.length - 1]?.valueUsd ?? null;
+  const historyDeltaUsd =
+    historyStartValue === null || historyEndValue === null ? null : historyEndValue - historyStartValue;
+  const historyDeltaPct =
+    historyStartValue === null || historyEndValue === null || historyStartValue === 0
+      ? null
+      : ((historyEndValue - historyStartValue) / historyStartValue) * 100;
   const visibleAssets = (snapshot?.assets ?? []).filter((asset) => !hideZeroBalances || Math.abs(asset.balance) > 0);
   const filteredTransactions = (snapshot?.transactions ?? []).filter((tx) => {
     if (txDirectionFilter !== "all" && tx.direction !== txDirectionFilter) return false;
@@ -247,6 +272,62 @@ export function DashboardClient() {
           <div className="mb-4 rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-700/60 dark:bg-rose-950/40 dark:text-rose-200">
             {m.dashboard.errors.refreshFailed} {(refreshMutation.error as Error)?.message ?? "Check API/env configuration and try again."}
           </div>
+        )}
+
+        {activeTab === "overview" && (
+          <section className="mb-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="text-sm font-medium text-slate-900 dark:text-slate-100">{m.dashboard.chart.title}</div>
+                <div className="text-xs text-slate-500 dark:text-slate-400">
+                  {m.dashboard.chart.points}: {filteredHistory.length}
+                </div>
+              </div>
+              <div className="inline-flex items-center gap-1 rounded-md border border-slate-300 p-1 dark:border-slate-700">
+                {historyRanges.map((range) => (
+                  <button
+                    className={`rounded px-2 py-1 text-xs ${
+                      historyRange === range
+                        ? "bg-brand-600 text-white"
+                        : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                    }`}
+                    key={range}
+                    onClick={() => setHistoryRange(range)}
+                    type="button"
+                  >
+                    {m.dashboard.chart.ranges[range]}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <PortfolioHistoryChart
+              points={filteredHistory}
+              privacyMode={privacyMode}
+              unknownLabel={m.dashboard.footer.unknown}
+              noDataLabel={m.dashboard.chart.noData}
+            />
+            
+            <div className="mt-3 grid gap-2 text-sm text-slate-600 dark:text-slate-300 md:grid-cols-3">
+              <div>
+                <span className="text-slate-500 dark:text-slate-400">{m.dashboard.chart.startValue}: </span>
+                <span>{maskUsd(historyStartValue)}</span>
+              </div>
+              <div>
+                <span className="text-slate-500 dark:text-slate-400">{m.dashboard.chart.endValue}: </span>
+                <span>{maskUsd(historyEndValue)}</span>
+              </div>
+              <div>
+                <span className="text-slate-500 dark:text-slate-400">{m.dashboard.chart.change}: </span>
+                <span className={historyDeltaUsd !== null && historyDeltaUsd < 0 ? "text-rose-500" : "text-emerald-500"}>
+                  {privacyMode
+                    ? "******"
+                    : historyDeltaUsd === null
+                      ? "-"
+                      : `${formatUsd(historyDeltaUsd)}${historyDeltaPct === null ? "" : ` (${historyDeltaPct.toFixed(2)}%)`}`}
+                </span>
+              </div>
+            </div>
+          </section>
         )}
 
         {activeTab === "overview" && (
@@ -621,4 +702,73 @@ function formatTransactionTime(unixTs: number, unknownLabel: string): string {
     return unknownLabel;
   }
   return new Date(unixTs * 1000).toLocaleString();
+}
+
+function filterHistoryByRange(points: HistoryResponse["history"], range: HistoryRange) {
+  if (range === "max" || points.length === 0) {
+    return points;
+  }
+
+  const days = range === "7d" ? 7 : range === "30d" ? 30 : 90;
+  const end = Date.parse(points[points.length - 1]?.ts ?? "");
+  if (!Number.isFinite(end)) {
+    return points;
+  }
+  const start = end - days * 24 * 60 * 60 * 1000;
+  const filtered = points.filter((point) => Date.parse(point.ts) >= start);
+  return filtered.length > 1 ? filtered : points.slice(-Math.min(points.length, 2));
+}
+
+function PortfolioHistoryChart({
+  points,
+  privacyMode,
+  unknownLabel,
+  noDataLabel
+}: {
+  points: HistoryResponse["history"];
+  privacyMode: boolean;
+  unknownLabel: string;
+  noDataLabel: string;
+}) {
+  if (points.length < 2) {
+    return (
+      <div className="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
+        {noDataLabel}
+      </div>
+    );
+  }
+
+  const width = 900;
+  const height = 220;
+  const minY = Math.min(...points.map((p) => p.valueUsd));
+  const maxY = Math.max(...points.map((p) => p.valueUsd));
+  const ySpan = maxY - minY || 1;
+  const xStep = width / (points.length - 1);
+  const coords = points.map((point, index) => {
+    const x = index * xStep;
+    const y = height - ((point.valueUsd - minY) / ySpan) * height;
+    return { x, y, point };
+  });
+  const path = coords.map((c, i) => `${i === 0 ? "M" : "L"} ${c.x.toFixed(2)} ${c.y.toFixed(2)}`).join(" ");
+  const area = `${path} L ${width} ${height} L 0 ${height} Z`;
+  const latest = points[points.length - 1];
+
+  return (
+    <div className="rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-950">
+      <div className="mb-2 text-xs text-slate-500 dark:text-slate-400">
+        {privacyMode ? "******" : formatUsd(latest?.valueUsd)} •{" "}
+        {latest?.ts ? new Date(latest.ts).toLocaleString(undefined, { timeZoneName: "short" }) : unknownLabel}
+      </div>
+      <svg className="h-56 w-full" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label="Portfolio history chart">
+        <defs>
+          <linearGradient id="historyArea" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="rgb(16 185 129 / 0.35)" />
+            <stop offset="100%" stopColor="rgb(16 185 129 / 0.03)" />
+          </linearGradient>
+        </defs>
+        <path d={area} fill="url(#historyArea)" />
+        <path d={path} fill="none" stroke="rgb(16 185 129)" strokeWidth="2.25" strokeLinecap="round" />
+      </svg>
+    </div>
+  );
 }

@@ -5,6 +5,8 @@ All notable changes to the Algorand Portfolio Tracker are documented in this fil
 ## [Unreleased]
 
 ### Added
+- Historical portfolio chart on Overview backed by saved snapshots (`/api/portfolio/history`) with 7D/30D/90D/Max range filters and change summary metrics (2026-02-17 10:20 MST)
+- Portfolio history extraction utility with regression tests for sorting, invalid-row filtering, and same-day deduplication (`src/lib/portfolio/history.ts`, `tests/history.test.ts`) (2026-02-17 10:20 MST)
 - User menu now includes a direct `Settings` shortcut (`/dashboard?tab=settings`) so preferences and danger-zone actions are accessible from account controls (2026-02-17 09:02 MST)
 - Self-service account deletion in Settings via secure `DELETE /api/account` endpoint plus UI danger-zone action (with confirmation), cascading removal of linked wallets/snapshots/sessions through Prisma relations (2026-02-17 09:06 MST)
 - Unit tests for account deletion service covering success and missing-user behavior (`tests/account-delete.test.ts`) (2026-02-17 09:06 MST)

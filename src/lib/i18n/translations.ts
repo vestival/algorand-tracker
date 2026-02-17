@@ -88,6 +88,20 @@ export const messages = {
         noRows: "No transactions match your filters.",
         estimated: "est."
       },
+      chart: {
+        title: "Portfolio history",
+        points: "data points",
+        startValue: "Start value",
+        endValue: "End value",
+        change: "Change",
+        noData: "Not enough historical snapshots yet. Refresh over time to build this chart.",
+        ranges: {
+          "7d": "7D",
+          "30d": "30D",
+          "90d": "90D",
+          max: "Max"
+        }
+      },
       defi: {
         yieldEstimate: "Yield estimate",
         estimated: "estimated",
@@ -258,6 +272,20 @@ export const messages = {
         },
         noRows: "No hay transacciones para esos filtros.",
         estimated: "est."
+      },
+      chart: {
+        title: "Historial del portafolio",
+        points: "puntos",
+        startValue: "Valor inicial",
+        endValue: "Valor final",
+        change: "Cambio",
+        noData: "Aun no hay suficientes snapshots historicos. Actualiza con el tiempo para construir este grafico.",
+        ranges: {
+          "7d": "7D",
+          "30d": "30D",
+          "90d": "90D",
+          max: "Max"
+        }
       },
       defi: {
         yieldEstimate: "Rendimiento estimado",
