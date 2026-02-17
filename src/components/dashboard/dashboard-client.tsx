@@ -4,13 +4,20 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { UserMenu } from "@/components/auth-buttons";
 import { LanguageToggle } from "@/components/language-toggle";
 import { useLanguage } from "@/components/language-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { apiFetch } from "@/lib/api-client";
+import {
+  alignSeriesByTimestamp,
+  buildPerWalletAssetBalanceSeries,
+  buildPerWalletValueSeries,
+  sumAlignedSeries,
+  type WalletSeries
+} from "@/lib/portfolio/wallet-analytics";
 import { formatAlgo, formatUsd, formatUsdPrecise, getAlgorandExplorerTxUrl, shortAddress } from "@/lib/utils";
 
 type SnapshotResponse = {
@@ -84,10 +91,12 @@ type HistoryResponse = {
   }>;
 };
 
-type DashboardTab = "overview" | "transactions" | "defi" | "settings";
-const tabs = ["overview", "transactions", "defi"] as const;
+type DashboardTab = "overview" | "transactions" | "defi" | "walletAnalytics" | "settings";
+const tabs = ["overview", "transactions", "defi", "walletAnalytics"] as const;
 const historyRanges = ["7d", "30d", "90d", "max"] as const;
 type HistoryRange = (typeof historyRanges)[number];
+type AnalyticsMetric = "value" | "balance";
+type AnalyticsMode = "aggregate" | "perWallet";
 
 export function DashboardClient() {
   const { m } = useLanguage();
@@ -101,6 +110,11 @@ export function DashboardClient() {
   const [txSearch, setTxSearch] = useState("");
   const [defiSearch, setDefiSearch] = useState("");
   const [historyRange, setHistoryRange] = useState<HistoryRange>("30d");
+  const [analyticsRange, setAnalyticsRange] = useState<HistoryRange>("30d");
+  const [analyticsMetric, setAnalyticsMetric] = useState<AnalyticsMetric>("value");
+  const [analyticsMode, setAnalyticsMode] = useState<AnalyticsMode>("aggregate");
+  const [analyticsAssetKey, setAnalyticsAssetKey] = useState<string>("ALGO");
+  const [selectedWallets, setSelectedWallets] = useState<string[]>([]);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -115,6 +129,10 @@ export function DashboardClient() {
     }
     if (tab === "defi") {
       setActiveTab("defi");
+      return;
+    }
+    if (tab === "wallet-analytics") {
+      setActiveTab("walletAnalytics");
       return;
     }
     setActiveTab("overview");
@@ -144,6 +162,39 @@ export function DashboardClient() {
   });
 
   const snapshot = snapshotQuery.data?.snapshot;
+  const availableWallets = useMemo(
+    () => snapshot?.wallets.map((wallet) => wallet.wallet) ?? [],
+    [snapshot?.wallets]
+  );
+
+  useEffect(() => {
+    if (!availableWallets.length) {
+      setSelectedWallets([]);
+      return;
+    }
+
+    setSelectedWallets((previous) => {
+      const stillValid = previous.filter((wallet) => availableWallets.includes(wallet));
+      return stillValid.length > 0 ? stillValid : availableWallets;
+    });
+  }, [availableWallets]);
+
+  const availableAssets = useMemo(
+    () =>
+      (snapshot?.assets ?? []).map((asset) => ({
+        key: asset.assetKey,
+        label: asset.assetName ?? asset.assetKey
+      })),
+    [snapshot?.assets]
+  );
+
+  useEffect(() => {
+    if (!availableAssets.length) return;
+    if (!availableAssets.some((asset) => asset.key === analyticsAssetKey)) {
+      setAnalyticsAssetKey(availableAssets[0]?.key ?? "ALGO");
+    }
+  }, [availableAssets, analyticsAssetKey]);
+
   const history = historyQuery.data?.history ?? [];
   const filteredHistory = filterHistoryByRange(history, historyRange);
   const historyStartValue = filteredHistory[0]?.valueUsd ?? null;
@@ -214,6 +265,75 @@ export function DashboardClient() {
   const maskUsd = (value: number | null | undefined) => (privacyMode ? "******" : formatUsd(value));
   const maskUsdPrecise = (value: number | null | undefined) => (privacyMode ? "******" : formatUsdPrecise(value));
   const maskAlgo = (value: number | null | undefined) => (privacyMode ? "******" : formatAlgo(value));
+
+  const selectedWalletSet = selectedWallets.length > 0 ? selectedWallets : availableWallets;
+
+  const latestValueByWallet = useMemo(
+    () =>
+      Object.fromEntries(
+        (snapshot?.wallets ?? []).map((wallet) => [wallet.wallet, wallet.totalValueUsd])
+      ),
+    [snapshot?.wallets]
+  );
+
+  const latestBalanceByWallet = useMemo(() => {
+    const source = (snapshot?.assets ?? []).find((asset) => asset.assetKey === analyticsAssetKey)?.walletBreakdown ?? [];
+    return Object.fromEntries(source.map((entry) => [entry.wallet, entry.balance]));
+  }, [snapshot?.assets, analyticsAssetKey]);
+
+  const walletSeries = useMemo(() => {
+    const txRows = (snapshot?.transactions ?? []).map((tx) => ({
+      ts: tx.ts,
+      wallet: tx.wallet,
+      assetKey: tx.assetKey,
+      amount: tx.amount,
+      direction: tx.direction,
+      unitPriceUsd: tx.unitPriceUsd,
+      feeAlgo: tx.feeAlgo
+    }));
+
+    if (analyticsMetric === "value") {
+      return buildPerWalletValueSeries({
+        transactions: txRows,
+        wallets: selectedWalletSet,
+        latestValueByWallet,
+        latestTs: snapshot?.computedAt ?? null
+      });
+    }
+
+    return buildPerWalletAssetBalanceSeries({
+      transactions: txRows,
+      wallets: selectedWalletSet,
+      assetKey: analyticsAssetKey,
+      latestBalanceByWallet,
+      latestTs: snapshot?.computedAt ?? null
+    });
+  }, [
+    analyticsMetric,
+    selectedWalletSet,
+    latestValueByWallet,
+    latestBalanceByWallet,
+    analyticsAssetKey,
+    snapshot?.transactions,
+    snapshot?.computedAt
+  ]);
+
+  const filteredWalletSeries = useMemo(
+    () => filterSeriesByRange(walletSeries, analyticsRange),
+    [walletSeries, analyticsRange]
+  );
+  const aggregateWalletSeries = useMemo(() => {
+    const aligned = alignSeriesByTimestamp(filteredWalletSeries);
+    return sumAlignedSeries(aligned);
+  }, [filteredWalletSeries]);
+  const analyticsSeries = analyticsMode === "aggregate" ? [aggregateWalletSeries] : filteredWalletSeries;
+  const analyticsStartValue = aggregateWalletSeries.points[0]?.value ?? null;
+  const analyticsEndValue = aggregateWalletSeries.points[aggregateWalletSeries.points.length - 1]?.value ?? null;
+  const analyticsDelta = analyticsStartValue === null || analyticsEndValue === null ? null : analyticsEndValue - analyticsStartValue;
+  const analyticsDeltaPct =
+    analyticsStartValue === null || analyticsEndValue === null || analyticsStartValue === 0
+      ? null
+      : ((analyticsEndValue - analyticsStartValue) / analyticsStartValue) * 100;
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
@@ -619,6 +739,127 @@ export function DashboardClient() {
           </section>
         )}
 
+        {activeTab === "walletAnalytics" && (
+          <section className="space-y-3">
+            <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+              <div className="mb-3 flex flex-wrap items-end gap-2">
+                <div className="min-w-[180px]">
+                  <label className="mb-1 block text-xs text-slate-500 dark:text-slate-400">{m.dashboard.walletAnalytics.metric}</label>
+                  <select
+                    className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                    value={analyticsMetric}
+                    onChange={(event) => setAnalyticsMetric(event.target.value as AnalyticsMetric)}
+                  >
+                    <option value="value">{m.dashboard.walletAnalytics.valueMode}</option>
+                    <option value="balance">{m.dashboard.walletAnalytics.balanceMode}</option>
+                  </select>
+                </div>
+                <div className="min-w-[180px]">
+                  <label className="mb-1 block text-xs text-slate-500 dark:text-slate-400">{m.dashboard.walletAnalytics.view}</label>
+                  <select
+                    className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                    value={analyticsMode}
+                    onChange={(event) => setAnalyticsMode(event.target.value as AnalyticsMode)}
+                  >
+                    <option value="aggregate">{m.dashboard.walletAnalytics.aggregate}</option>
+                    <option value="perWallet">{m.dashboard.walletAnalytics.perWallet}</option>
+                  </select>
+                </div>
+                {analyticsMetric === "balance" && (
+                  <div className="min-w-[200px]">
+                    <label className="mb-1 block text-xs text-slate-500 dark:text-slate-400">{m.dashboard.walletAnalytics.asset}</label>
+                    <select
+                      className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                      value={analyticsAssetKey}
+                      onChange={(event) => setAnalyticsAssetKey(event.target.value)}
+                    >
+                      {availableAssets.map((asset) => (
+                        <option key={asset.key} value={asset.key}>
+                          {asset.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                <details className="min-w-[260px]">
+                  <summary className="cursor-pointer list-none rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 dark:border-slate-700 dark:text-slate-200">
+                    {m.dashboard.walletAnalytics.wallets}: {selectedWalletSet.length}
+                  </summary>
+                  <div className="mt-2 max-h-44 space-y-1 overflow-auto rounded-md border border-slate-200 bg-slate-50 p-2 text-sm dark:border-slate-700 dark:bg-slate-950">
+                    {availableWallets.map((wallet) => {
+                      const checked = selectedWalletSet.includes(wallet);
+                      return (
+                        <label className="flex items-center gap-2" key={wallet}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(event) => {
+                              setSelectedWallets((previous) => {
+                                if (event.target.checked) {
+                                  return [...new Set([...previous, wallet])];
+                                }
+                                const next = previous.filter((item) => item !== wallet);
+                                return next.length ? next : availableWallets;
+                              });
+                            }}
+                          />
+                          <span>{shortAddress(wallet)}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </details>
+                <div className="ml-auto inline-flex items-center gap-1 rounded-md border border-slate-300 p-1 dark:border-slate-700">
+                  {historyRanges.map((range) => (
+                    <button
+                      className={`rounded px-2 py-1 text-xs ${
+                        analyticsRange === range
+                          ? "bg-brand-600 text-white"
+                          : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                      }`}
+                      key={range}
+                      onClick={() => setAnalyticsRange(range)}
+                      type="button"
+                    >
+                      {m.dashboard.chart.ranges[range]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <MultiSeriesHistoryChart
+                series={analyticsSeries}
+                privacyMode={privacyMode}
+                isUsd={analyticsMetric === "value"}
+                noDataLabel={m.dashboard.chart.noData}
+              />
+
+              <div className="mt-3 grid gap-2 text-sm text-slate-600 dark:text-slate-300 md:grid-cols-3">
+                <div>
+                  <span className="text-slate-500 dark:text-slate-400">{m.dashboard.chart.startValue}: </span>
+                  <span>{analyticsMetric === "value" ? maskUsd(analyticsStartValue) : maskNumber(analyticsStartValue ?? 0)}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 dark:text-slate-400">{m.dashboard.chart.endValue}: </span>
+                  <span>{analyticsMetric === "value" ? maskUsd(analyticsEndValue) : maskNumber(analyticsEndValue ?? 0)}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 dark:text-slate-400">{m.dashboard.chart.change}: </span>
+                  <span className={analyticsDelta !== null && analyticsDelta < 0 ? "text-rose-500" : "text-emerald-500"}>
+                    {privacyMode
+                      ? "******"
+                      : analyticsDelta === null
+                        ? "-"
+                        : `${analyticsMetric === "value" ? formatUsd(analyticsDelta) : maskNumber(analyticsDelta)}${
+                            analyticsDeltaPct === null ? "" : ` (${analyticsDeltaPct.toFixed(2)}%)`
+                          }`}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
         {activeTab === "settings" && (
           <section className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
             <div className="mb-4 flex items-center justify-between">
@@ -719,6 +960,20 @@ function filterHistoryByRange(points: HistoryResponse["history"], range: History
   return filtered.length > 1 ? filtered : points.slice(-Math.min(points.length, 2));
 }
 
+function filterSeriesByRange(series: WalletSeries[], range: HistoryRange): WalletSeries[] {
+  if (range === "max") return series;
+  const allTs = series.flatMap((item) => item.points.map((point) => Date.parse(point.ts))).filter((value) => Number.isFinite(value));
+  if (allTs.length === 0) return series;
+  const end = Math.max(...allTs);
+  const days = range === "7d" ? 7 : range === "30d" ? 30 : 90;
+  const start = end - days * 24 * 60 * 60 * 1000;
+
+  return series.map((item) => {
+    const points = item.points.filter((point) => Date.parse(point.ts) >= start);
+    return { ...item, points: points.length > 1 ? points : item.points.slice(-Math.min(2, item.points.length)) };
+  });
+}
+
 function PortfolioHistoryChart({
   points,
   privacyMode,
@@ -807,6 +1062,143 @@ function PortfolioHistoryChart({
           <div className="text-slate-500 dark:text-slate-400">
             {new Date(active.point.ts).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const SERIES_COLORS = [
+  "rgb(16 185 129)",
+  "rgb(56 189 248)",
+  "rgb(168 85 247)",
+  "rgb(244 114 182)",
+  "rgb(251 146 60)",
+  "rgb(99 102 241)"
+];
+
+function MultiSeriesHistoryChart({
+  series,
+  privacyMode,
+  isUsd,
+  noDataLabel
+}: {
+  series: WalletSeries[];
+  privacyMode: boolean;
+  isUsd: boolean;
+  noDataLabel: string;
+}) {
+  const aligned = alignSeriesByTimestamp(series);
+  const timestamps = aligned.timestamps;
+  const latestIndex = Math.max(0, timestamps.length - 1);
+  const [activeIndex, setActiveIndex] = useState(latestIndex);
+  const visibleSeries = aligned.series;
+
+  if (timestamps.length < 2 || visibleSeries.length === 0) {
+    return (
+      <div className="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
+        {noDataLabel}
+      </div>
+    );
+  }
+
+  const values = visibleSeries.flatMap((item) => item.values);
+  const minY = Math.min(...values);
+  const maxY = Math.max(...values);
+  const ySpan = maxY - minY || 1;
+  const width = 900;
+  const height = 220;
+  const xStep = width / (timestamps.length - 1);
+  const clampedIndex = Math.min(Math.max(activeIndex, 0), latestIndex);
+
+  const toPath = (seriesValues: number[]) =>
+    seriesValues
+      .map((value, index) => {
+        const x = index * xStep;
+        const y = height - ((value - minY) / ySpan) * height;
+        return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
+      })
+      .join(" ");
+
+  const getClosestIndex = (clientX: number, left: number, boxWidth: number) => {
+    if (boxWidth <= 0) return latestIndex;
+    const relativeX = Math.min(Math.max(clientX - left, 0), boxWidth);
+    const ratio = relativeX / boxWidth;
+    return Math.min(latestIndex, Math.max(0, Math.round(ratio * latestIndex)));
+  };
+
+  return (
+    <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-950">
+      <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+        {visibleSeries.map((item, index) => (
+          <div className="inline-flex items-center gap-1.5" key={item.key}>
+            <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: SERIES_COLORS[index % SERIES_COLORS.length] }} />
+            <span>{shortAddress(item.label)}</span>
+          </div>
+        ))}
+      </div>
+      <div className="relative">
+        <svg
+          className="h-56 w-full"
+          viewBox={`0 0 ${width} ${height}`}
+          preserveAspectRatio="none"
+          onMouseLeave={() => setActiveIndex(latestIndex)}
+          onMouseMove={(event) => {
+            const rect = event.currentTarget.getBoundingClientRect();
+            setActiveIndex(getClosestIndex(event.clientX, rect.left, rect.width));
+          }}
+          onTouchMove={(event) => {
+            const touch = event.touches.item(0);
+            if (!touch) return;
+            const rect = event.currentTarget.getBoundingClientRect();
+            setActiveIndex(getClosestIndex(touch.clientX, rect.left, rect.width));
+          }}
+        >
+          {visibleSeries.map((item, index) => (
+            <path
+              key={item.key}
+              d={toPath(item.values)}
+              fill="none"
+              stroke={SERIES_COLORS[index % SERIES_COLORS.length]}
+              strokeWidth={2.2}
+              strokeLinecap="round"
+            />
+          ))}
+          <line x1={clampedIndex * xStep} x2={clampedIndex * xStep} y1={0} y2={height} stroke="rgb(148 163 184 / 0.45)" strokeDasharray="3 4" />
+          {visibleSeries.map((item, index) => {
+            const value = item.values[clampedIndex] ?? 0;
+            const x = clampedIndex * xStep;
+            const y = height - ((value - minY) / ySpan) * height;
+            return (
+              <circle
+                key={`${item.key}-active`}
+                cx={x}
+                cy={y}
+                r="3.5"
+                fill={SERIES_COLORS[index % SERIES_COLORS.length]}
+                stroke="rgb(2 6 23)"
+                strokeWidth="1.5"
+              />
+            );
+          })}
+        </svg>
+        <div
+          className="pointer-events-none absolute top-2 -translate-x-1/2 rounded-md border border-slate-300 bg-white/95 px-2 py-1 text-[11px] text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-200"
+          style={{ left: `${(clampedIndex / latestIndex) * 100}%` }}
+        >
+          <div className="mb-1 text-slate-500 dark:text-slate-400">
+            {new Date(timestamps[clampedIndex] ?? "").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+          </div>
+          {visibleSeries.map((item, index) => {
+            const value = item.values[clampedIndex] ?? 0;
+            const rendered = privacyMode ? "******" : isUsd ? formatUsd(value) : new Intl.NumberFormat("en-US", { maximumFractionDigits: 6 }).format(value);
+            return (
+              <div className="flex items-center gap-1.5" key={`${item.key}-tooltip`}>
+                <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: SERIES_COLORS[index % SERIES_COLORS.length] }} />
+                <span>{shortAddress(item.label)}: {rendered}</span>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

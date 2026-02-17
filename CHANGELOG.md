@@ -5,6 +5,9 @@ All notable changes to the Algorand Portfolio Tracker are documented in this fil
 ## [Unreleased]
 
 ### Added
+- New Wallet Analytics tab with wallet multi-select dropdown, metric selector (`Total value (USD)` / `Token balance`), chart mode selector (`Aggregate` / `Per wallet`), and asset selector for balance visualization (2026-02-17 11:02 MST)
+- Interactive multi-line wallet chart with hover/touch crosshair, per-series tooltip values, and range filters (7D/30D/90D/Max) (2026-02-17 11:02 MST)
+- Wallet analytics series utilities and tests for per-wallet replay, ALGO fee impact on balance mode, and aligned aggregate series generation (`src/lib/portfolio/wallet-analytics.ts`, `tests/wallet-analytics.test.ts`) (2026-02-17 11:02 MST)
 - Portfolio history chart is now interactive (hover/touch crosshair + tooltip with exact point value/date) for easier historical inspection (2026-02-17 10:20 MST)
 - Historical portfolio chart on Overview backed by transaction history replay (`/api/portfolio/history`) with 7D/30D/90D/Max range filters and change summary metrics (2026-02-17 10:20 MST)
 - Portfolio history extraction utility with regression tests for sorting, invalid-row filtering, and same-day deduplication (`src/lib/portfolio/history.ts`, `tests/history.test.ts`) (2026-02-17 10:20 MST)

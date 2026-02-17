@@ -13,6 +13,8 @@ describe("i18n messages", () => {
   it("contains translated dashboard tabs", () => {
     expect(messages.en.dashboard.tabs.transactions).toBe("Transactions");
     expect(messages.es.dashboard.tabs.transactions).toBe("Transacciones");
+    expect(messages.en.dashboard.tabs.walletAnalytics).toBeTruthy();
+    expect(messages.es.dashboard.tabs.walletAnalytics).toBeTruthy();
     expect(messages.en.dashboard.chart.title).toBeTruthy();
     expect(messages.es.dashboard.chart.title).toBeTruthy();
   });

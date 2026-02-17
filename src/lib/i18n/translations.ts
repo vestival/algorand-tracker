@@ -33,6 +33,7 @@ export const messages = {
         overview: "Overview",
         transactions: "Transactions",
         defi: "DeFi Positions",
+        walletAnalytics: "Wallet Analytics",
         wallets: "Wallets",
         settings: "Settings"
       },
@@ -101,6 +102,16 @@ export const messages = {
           "90d": "90D",
           max: "Max"
         }
+      },
+      walletAnalytics: {
+        metric: "Metric",
+        valueMode: "Total value (USD)",
+        balanceMode: "Token balance",
+        view: "Chart mode",
+        aggregate: "Aggregate",
+        perWallet: "Per wallet",
+        wallets: "Wallet filter",
+        asset: "Asset"
       },
       defi: {
         yieldEstimate: "Yield estimate",
@@ -218,6 +229,7 @@ export const messages = {
         overview: "Resumen",
         transactions: "Transacciones",
         defi: "Posiciones DeFi",
+        walletAnalytics: "Analitica wallets",
         wallets: "Wallets",
         settings: "Configuracion"
       },
@@ -286,6 +298,16 @@ export const messages = {
           "90d": "90D",
           max: "Max"
         }
+      },
+      walletAnalytics: {
+        metric: "Metrica",
+        valueMode: "Valor total (USD)",
+        balanceMode: "Balance token",
+        view: "Modo grafico",
+        aggregate: "Agregado",
+        perWallet: "Por wallet",
+        wallets: "Filtro wallets",
+        asset: "Activo"
       },
       defi: {
         yieldEstimate: "Rendimiento estimado",
