@@ -4,6 +4,13 @@ All notable changes to the Algorand Portfolio Tracker are documented in this fil
 
 ## [Unreleased]
 
+### Added
+- Light/dark mode toggle using `next-themes` with Tailwind `darkMode: "class"` strategy (2026-02-17)
+  - Theme toggle button (sun/moon icons) in dashboard header and Settings tab
+  - All pages converted to dual-mode: landing, dashboard, wallets, auth buttons
+  - Preference persists in localStorage; defaults to dark; respects OS `prefers-color-scheme`
+  - No flash of wrong theme on page load via `next-themes` inline script
+
 ### Changed
 - Complete rewrite of README.md with architecture diagram, annotated project structure, environment variable tables, expanded feature descriptions, and security documentation
 - Added this CHANGELOG.md

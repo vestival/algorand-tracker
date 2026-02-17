@@ -180,16 +180,16 @@ export default function WalletsPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-950 p-4 text-slate-100 md:p-8">
+    <main className="min-h-screen bg-slate-50 p-4 text-slate-900 dark:bg-slate-950 dark:text-slate-100 md:p-8">
       <div className="mx-auto max-w-4xl">
         <header className="mb-6 flex items-center justify-between">
           <h1 className="text-2xl font-semibold">Wallet Linking</h1>
-          <Link className="rounded-md border border-slate-700 px-3 py-2 text-sm hover:bg-slate-800" href="/dashboard">
+          <Link className="rounded-md border border-slate-300 px-3 py-2 text-sm hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800" href="/dashboard">
             Back to dashboard
           </Link>
         </header>
 
-        <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
           <div className="flex flex-wrap items-center gap-2">
             <button
               className="rounded-md bg-brand-500 px-4 py-2 text-sm hover:bg-brand-700"
@@ -199,7 +199,7 @@ export default function WalletsPage() {
               {connectedAddress ? "Switch wallet" : "Connect wallet"}
             </button>
             <button
-              className="rounded-md border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800 disabled:opacity-60"
+              className="rounded-md border border-slate-300 px-4 py-2 text-sm hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:hover:bg-slate-800"
               disabled={!connectedAddress && !peraWallet}
               onClick={disconnectPeraWallet}
               type="button"
@@ -208,17 +208,17 @@ export default function WalletsPage() {
             </button>
           </div>
 
-          <div className="mt-4 rounded-md border border-slate-800 bg-slate-950 p-3 text-sm">
-            <div className="text-slate-400">Connected wallet</div>
+          <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-800 dark:bg-slate-950">
+            <div className="text-slate-500 dark:text-slate-400">Connected wallet</div>
             <div className="font-medium">{connectedAddress ? shortAddress(connectedAddress) : "Not connected"}</div>
             {availableAccounts.length > 1 && (
               <div className="mt-2">
-                <label className="mb-1 block text-xs text-slate-400" htmlFor="wallet-account-select">
+                <label className="mb-1 block text-xs text-slate-500 dark:text-slate-400" htmlFor="wallet-account-select">
                   Select account
                 </label>
                 <select
                   id="wallet-account-select"
-                  className="w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm text-slate-100"
+                  className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                   onChange={(e) => setConnectedAddress(e.target.value)}
                   value={connectedAddress ?? ""}
                 >
@@ -231,7 +231,7 @@ export default function WalletsPage() {
               </div>
             )}
             {connectedAddress && (
-              <div className="mt-1 text-xs text-slate-400">
+              <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                 {connectedAlreadyVerified ? "This wallet is already verified." : "This wallet is not linked yet."}
               </div>
             )}
@@ -250,27 +250,27 @@ export default function WalletsPage() {
                 : "Verify wallet ownership"}
           </button>
 
-          <p className="mt-3 text-xs text-slate-400">
+          <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
             This creates a 0-ALGO verification transaction with a nonce note, requests wallet signature, and submits it
             automatically.
           </p>
-          <p className="mt-1 text-xs text-slate-400">
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             To link multiple wallets, repeat: connect another wallet, then verify.
           </p>
 
-          {statusText && <p className="mt-3 text-sm text-slate-300">{statusText}</p>}
+          {statusText && <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">{statusText}</p>}
         </div>
 
-        <section className="mt-6 rounded-xl border border-slate-800 bg-slate-900 p-4">
+        <section className="mt-6 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
           <h2 className="mb-3 text-lg font-medium">Linked wallets</h2>
           <div className="space-y-2">
             {walletsQuery.data?.wallets.map((wallet) => (
-              <div className="rounded-md border border-slate-800 p-3 text-sm" key={wallet.id}>
+              <div className="rounded-md border border-slate-200 p-3 text-sm dark:border-slate-800" key={wallet.id}>
                 <div className="font-medium">{shortAddress(wallet.address)}</div>
-                <div className="text-slate-400">Status: {wallet.verifiedAt ? "Verified" : "Pending verification"}</div>
+                <div className="text-slate-500 dark:text-slate-400">Status: {wallet.verifiedAt ? "Verified" : "Pending verification"}</div>
               </div>
             ))}
-            {!walletsQuery.data?.wallets.length && <p className="text-sm text-slate-400">No linked wallets yet.</p>}
+            {!walletsQuery.data?.wallets.length && <p className="text-sm text-slate-500 dark:text-slate-400">No linked wallets yet.</p>}
           </div>
         </section>
       </div>

@@ -21,9 +21,9 @@ export function UserMenu() {
 
   return (
     <div className="flex items-center gap-3">
-      <span className="text-sm text-slate-300">{data.user.email}</span>
+      <span className="text-sm text-slate-600 dark:text-slate-300">{data.user.email}</span>
       <button
-        className="rounded-md border border-slate-600 px-3 py-1 text-sm hover:bg-slate-800"
+        className="rounded-md border border-slate-300 px-3 py-1 text-sm hover:bg-slate-100 dark:border-slate-600 dark:hover:bg-slate-800"
         onClick={() => signOut({ callbackUrl: "/" })}
         type="button"
       >
