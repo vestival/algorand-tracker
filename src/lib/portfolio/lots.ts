@@ -92,7 +92,19 @@ export function runFifo(events: LotEvent[]): Record<string, AssetLotSummary> {
       }
     }
 
-    const proceeds = event.amount * event.unitPriceUsd - event.feeUsd;
+    const matchedQty = event.amount - remainingToDispose;
+    if (matchedQty <= 0) {
+      summary.hasPriceGaps = true;
+      continue;
+    }
+
+    if (remainingToDispose > 0) {
+      // We only know basis for matched lots. Unmatched disposal quantity implies missing history.
+      summary.hasPriceGaps = true;
+    }
+
+    const matchedFeeUsd = event.feeUsd * (matchedQty / event.amount);
+    const proceeds = matchedQty * event.unitPriceUsd - matchedFeeUsd;
     if (!Number.isFinite(proceeds)) {
       summary.hasPriceGaps = true;
       continue;

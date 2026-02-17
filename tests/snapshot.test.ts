@@ -59,6 +59,7 @@ describe("computePortfolioSnapshot", () => {
     expect(snapshot.totals.valueUsd).toBeGreaterThan(0);
     expect(snapshot.defiPositions.length).toBe(1);
     expect(snapshot.method).toBe("FIFO");
+    expect(typeof snapshot.priceAsOf).toBe("string");
   });
 
   it("attributes wallet cost basis from inbound buys, not only sender txns", async () => {

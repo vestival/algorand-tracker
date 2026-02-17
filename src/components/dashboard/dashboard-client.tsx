@@ -12,6 +12,7 @@ import { formatUsd, shortAddress } from "@/lib/utils";
 type SnapshotResponse = {
   snapshot: {
     computedAt: string;
+    priceAsOf: string;
     totals: {
       valueUsd: number;
       costBasisUsd: number;
@@ -70,7 +71,7 @@ const tabs = ["Overview", "Transactions", "DeFi Positions", "Wallets", "Settings
 
 export function DashboardClient() {
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]>("Overview");
-  const [hideZeroBalances, setHideZeroBalances] = useState<boolean>(false);
+  const [hideZeroBalances, setHideZeroBalances] = useState<boolean>(true);
   const [privacyMode, setPrivacyMode] = useState<boolean>(false);
   const [txDirectionFilter, setTxDirectionFilter] = useState<"all" | "in" | "out" | "self">("all");
   const [txTypeFilter, setTxTypeFilter] = useState<"all" | "payment" | "asset-transfer">("all");
@@ -467,7 +468,9 @@ export function DashboardClient() {
         )}
 
         <p className="mt-4 text-xs text-slate-400 dark:text-slate-500">
-          Last snapshot: {snapshot?.computedAt ? new Date(snapshot.computedAt).toLocaleString() : "none"}
+          Last snapshot: {snapshot?.computedAt ? new Date(snapshot.computedAt).toLocaleString(undefined, { timeZoneName: "short" }) : "none"}
+          {" • "}
+          Prices as of: {snapshot?.priceAsOf ? new Date(snapshot.priceAsOf).toLocaleString(undefined, { timeZoneName: "short" }) : "none"}
         </p>
       </div>
     </main>

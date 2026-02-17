@@ -83,4 +83,31 @@ describe("runFifo", () => {
     expect(summary.ALGO.remainingQty).toBe(0);
     expect(summary.ALGO.realizedPnlUsd).toBeCloseTo(2); // (15 - 2) - (10 + 1)
   });
+
+  it("does not overstate realized pnl when sells exceed known lots", () => {
+    const events: LotEvent[] = [
+      {
+        txId: "t1",
+        ts: 1,
+        assetId: null,
+        side: "buy",
+        amount: 1,
+        unitPriceUsd: 10,
+        feeUsd: 0
+      },
+      {
+        txId: "t2",
+        ts: 2,
+        assetId: null,
+        side: "sell",
+        amount: 3,
+        unitPriceUsd: 10,
+        feeUsd: 0
+      }
+    ];
+
+    const summary = runFifo(events);
+    expect(summary.ALGO.realizedPnlUsd).toBeCloseTo(0);
+    expect(summary.ALGO.hasPriceGaps).toBe(true);
+  });
 });

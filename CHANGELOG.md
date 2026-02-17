@@ -27,6 +27,11 @@ All notable changes to the Algorand Portfolio Tracker are documented in this fil
 - Snapshot API now auto-recomputes when stored totals/asset cost basis fields are invalid, not only when transactions are empty (2026-02-17 04:57 MST)
 - `formatUsd` now rejects all non-finite numbers (`NaN`, `Infinity`) to avoid broken currency rendering (2026-02-17 04:57 MST)
 - Added regression test ensuring malformed transaction fields cannot break cost basis/PnL displayability (`tests/snapshot.test.ts`) (2026-02-17 04:57 MST)
+- Fixed FIFO realized PnL overstatement when disposal quantity exceeds known lots; unmatched quantity is now treated as missing history instead of zero-cost profit (`src/lib/portfolio/lots.ts`) (2026-02-17 05:11 MST)
+- Portfolio asset cost basis is now reconciled against current on-chain balance; zero-balance assets default to zero remaining basis to avoid confusing carryover values (2026-02-17 05:11 MST)
+- Overview now defaults to hiding 0-balance assets to reduce noise from opt-ins and stale holdings (2026-02-17 05:11 MST)
+- Added "Prices as of" timestamp with local timezone in the dashboard footer for pricing transparency (2026-02-17 05:11 MST)
+- Added FIFO regression test for partial-lot disposal and snapshot assertion for `priceAsOf` metadata (2026-02-17 05:11 MST)
 
 ## [0.1.0] - 2026-02-16
 

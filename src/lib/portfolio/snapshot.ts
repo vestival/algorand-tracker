@@ -44,6 +44,7 @@ export type SnapshotTransactionRow = {
 
 export type PortfolioSnapshotPayload = {
   computedAt: string;
+  priceAsOf: string;
   method: "FIFO";
   totals: {
     valueUsd: number;
@@ -126,7 +127,23 @@ export async function computePortfolioSnapshot(wallets: string[], deps: Snapshot
     const price = pricesUsd[assetKey] ?? null;
     const valueUsd = price === null ? null : balance * price;
     const lotSummary = fifo[assetKey];
-    const costBasisUsd = finiteOr(lotSummary?.remainingCostUsd ?? 0);
+    const lotQty = finiteOr(lotSummary?.remainingQty ?? 0);
+    const lotCost = finiteOr(lotSummary?.remainingCostUsd ?? 0);
+    let costBasisUsd = 0;
+
+    if (balance > 0 && lotQty > 0) {
+      const impliedUnitCost = lotCost / lotQty;
+      if (Number.isFinite(impliedUnitCost) && impliedUnitCost >= 0) {
+        costBasisUsd = impliedUnitCost * balance;
+      }
+    }
+
+    if (balance > 0 && costBasisUsd <= 0 && valueUsd !== null) {
+      // Fallback when historical lot basis is unavailable/partial.
+      costBasisUsd = valueUsd;
+    }
+
+    costBasisUsd = finiteOr(costBasisUsd);
     const realizedPnlUsd = finiteOr(lotSummary?.realizedPnlUsd ?? 0);
     const unrealizedPnlUsd = valueUsd === null ? null : finiteOr(valueUsd - costBasisUsd);
 
@@ -297,6 +314,7 @@ export async function computePortfolioSnapshot(wallets: string[], deps: Snapshot
 
   return {
     computedAt: new Date().toISOString(),
+    priceAsOf: new Date().toISOString(),
     method: "FIFO",
     totals,
     assets,
