@@ -41,16 +41,40 @@ export async function GET(request: Request) {
 
   let data = snapshot?.data as
     | {
+        totals?: {
+          valueUsd?: number | null;
+          costBasisUsd?: number | null;
+          realizedPnlUsd?: number | null;
+          unrealizedPnlUsd?: number | null;
+        };
         assets?: Array<{
           assetKey: string;
           assetName?: string;
+          balance?: number | null;
+          costBasisUsd?: number | null;
+          realizedPnlUsd?: number | null;
+          unrealizedPnlUsd?: number | null;
         }>;
         transactions?: unknown[];
       }
     | null
     | undefined;
 
-  const needsRecompute = !data || !Array.isArray(data.transactions) || data.transactions.length === 0;
+  const hasInvalidTotals =
+    !data?.totals ||
+    data.totals.costBasisUsd === null ||
+    data.totals.realizedPnlUsd === null ||
+    data.totals.unrealizedPnlUsd === null ||
+    data.totals.valueUsd === null;
+  const hasInvalidAssets =
+    (data?.assets ?? []).some(
+      (asset) =>
+        (asset.balance ?? 0) > 0 &&
+        (asset.assetKey === "ALGO" || asset.costBasisUsd !== null || asset.realizedPnlUsd !== null) &&
+        (asset.costBasisUsd === null || asset.realizedPnlUsd === null)
+    );
+  const needsRecompute =
+    !data || !Array.isArray(data.transactions) || data.transactions.length === 0 || hasInvalidTotals || hasInvalidAssets;
   if (needsRecompute) {
     const wallets = await prisma.linkedWallet.findMany({
       where: {

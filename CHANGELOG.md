@@ -23,6 +23,10 @@ All notable changes to the Algorand Portfolio Tracker are documented in this fil
 - Disabled NextAuth debug logging in production even if `NEXTAUTH_DEBUG=true`, preventing sensitive auth/provider internals from being written to production logs (2026-02-17 04:36 MST)
 - Added `*.tsbuildinfo` to `.gitignore` and untracked committed `tsconfig.tsbuildinfo` build artifact (2026-02-17 04:36 MST)
 - Added regression tests for wallet-level inbound FIFO attribution and rate-limit behavior (allow/block + fallback path) (2026-02-17 04:36 MST)
+- Stabilized portfolio numeric outputs by sanitizing invalid math inputs in snapshot computation, preventing `null`/`NaN` cost basis and PnL cards after persistence (2026-02-17 04:57 MST)
+- Snapshot API now auto-recomputes when stored totals/asset cost basis fields are invalid, not only when transactions are empty (2026-02-17 04:57 MST)
+- `formatUsd` now rejects all non-finite numbers (`NaN`, `Infinity`) to avoid broken currency rendering (2026-02-17 04:57 MST)
+- Added regression test ensuring malformed transaction fields cannot break cost basis/PnL displayability (`tests/snapshot.test.ts`) (2026-02-17 04:57 MST)
 
 ## [0.1.0] - 2026-02-16
 

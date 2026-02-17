@@ -90,4 +90,36 @@ describe("computePortfolioSnapshot", () => {
     expect(snapshot.wallets).toHaveLength(1);
     expect(snapshot.wallets[0]?.totalCostBasisUsd).toBeCloseTo(10);
   });
+
+  it("sanitizes invalid numeric values so cost basis and pnl remain displayable", async () => {
+    const snapshot = await computePortfolioSnapshot(["W1"], {
+      getAccountStateFn: async () => ({
+        address: "W1",
+        algoAmount: 1,
+        assets: [],
+        appsLocalState: []
+      }),
+      getTransactionsFn: async () => [
+        {
+          id: "bad-fee",
+          sender: "X",
+          fee: Number.NaN,
+          confirmedRoundTime: 1,
+          paymentTransaction: {
+            receiver: "W1",
+            amount: 1_000_000
+          }
+        }
+      ],
+      getSpotPricesFn: async () => ({
+        ALGO: 0.1
+      }),
+      getDefiPositionsFn: async () => []
+    });
+
+    expect(Number.isFinite(snapshot.totals.costBasisUsd)).toBe(true);
+    expect(Number.isFinite(snapshot.totals.realizedPnlUsd)).toBe(true);
+    expect(Number.isFinite(snapshot.totals.unrealizedPnlUsd)).toBe(true);
+    expect(Number.isFinite(snapshot.assets[0]?.costBasisUsd ?? Number.NaN)).toBe(true);
+  });
 });

@@ -1,5 +1,5 @@
 export function formatUsd(value: number | null | undefined): string {
-  if (value === null || value === undefined || Number.isNaN(value)) {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
     return "-";
   }
   return new Intl.NumberFormat("en-US", {

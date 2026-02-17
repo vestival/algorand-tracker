@@ -69,6 +69,10 @@ export type SnapshotDeps = {
   getDefiPositionsFn?: (wallets: string[]) => Promise<DefiPosition[]>;
 };
 
+function finiteOr(value: number, fallback = 0): number {
+  return Number.isFinite(value) ? value : fallback;
+}
+
 export async function computePortfolioSnapshot(wallets: string[], deps: SnapshotDeps = {}): Promise<PortfolioSnapshotPayload> {
   const getAccountStateFn = deps.getAccountStateFn ?? getAccountState;
   const getTransactionsFn = deps.getTransactionsFn ?? getTransactionsForAddress;
@@ -122,9 +126,9 @@ export async function computePortfolioSnapshot(wallets: string[], deps: Snapshot
     const price = pricesUsd[assetKey] ?? null;
     const valueUsd = price === null ? null : balance * price;
     const lotSummary = fifo[assetKey];
-    const costBasisUsd = lotSummary?.remainingCostUsd ?? 0;
-    const realizedPnlUsd = lotSummary?.realizedPnlUsd ?? 0;
-    const unrealizedPnlUsd = valueUsd === null ? null : valueUsd - costBasisUsd;
+    const costBasisUsd = finiteOr(lotSummary?.remainingCostUsd ?? 0);
+    const realizedPnlUsd = finiteOr(lotSummary?.realizedPnlUsd ?? 0);
+    const unrealizedPnlUsd = valueUsd === null ? null : finiteOr(valueUsd - costBasisUsd);
 
     assets.push({
       assetKey,
@@ -215,12 +219,16 @@ export async function computePortfolioSnapshot(wallets: string[], deps: Snapshot
 
   const totals = assets.reduce(
     (acc, row) => {
-      if (row.valueUsd !== null) {
+      if (row.valueUsd !== null && Number.isFinite(row.valueUsd)) {
         acc.valueUsd += row.valueUsd;
       }
-      acc.costBasisUsd += row.costBasisUsd;
-      acc.realizedPnlUsd += row.realizedPnlUsd;
-      if (row.unrealizedPnlUsd !== null) {
+      if (Number.isFinite(row.costBasisUsd)) {
+        acc.costBasisUsd += row.costBasisUsd;
+      }
+      if (Number.isFinite(row.realizedPnlUsd)) {
+        acc.realizedPnlUsd += row.realizedPnlUsd;
+      }
+      if (row.unrealizedPnlUsd !== null && Number.isFinite(row.unrealizedPnlUsd)) {
         acc.unrealizedPnlUsd += row.unrealizedPnlUsd;
       }
       return acc;
@@ -253,29 +261,33 @@ export async function computePortfolioSnapshot(wallets: string[], deps: Snapshot
       return false;
     });
     const walletFifo = runFifo(walletEvents);
-    const totalCostBasisUsd = Object.values(walletFifo).reduce((sum, x) => sum + x.remainingCostUsd, 0);
-    const totalRealizedPnlUsd = Object.values(walletFifo).reduce((sum, x) => sum + x.realizedPnlUsd, 0);
+    const totalCostBasisUsd = finiteOr(
+      Object.values(walletFifo).reduce((sum, x) => sum + finiteOr(x.remainingCostUsd), 0)
+    );
+    const totalRealizedPnlUsd = finiteOr(
+      Object.values(walletFifo).reduce((sum, x) => sum + finiteOr(x.realizedPnlUsd), 0)
+    );
 
     const account = accountStates.find((a) => a.address === wallet);
     let totalValueUsd = 0;
 
     if (account) {
-      totalValueUsd += account.algoAmount * (pricesUsd.ALGO ?? 0);
+      totalValueUsd += finiteOr(account.algoAmount * (pricesUsd.ALGO ?? 0));
       for (const asset of account.assets) {
         const key = String(asset.assetId);
         const p = pricesUsd[key] ?? null;
         if (p !== null) {
-          totalValueUsd += asset.amount * p;
+          totalValueUsd += finiteOr(asset.amount * p);
         }
       }
     }
 
     walletSummaries.push({
       wallet,
-      totalValueUsd,
+      totalValueUsd: finiteOr(totalValueUsd),
       totalCostBasisUsd,
       totalRealizedPnlUsd,
-      totalUnrealizedPnlUsd: totalValueUsd - totalCostBasisUsd
+      totalUnrealizedPnlUsd: finiteOr(totalValueUsd - totalCostBasisUsd)
     });
   }
 
