@@ -38,6 +38,7 @@ export type SnapshotTransactionRow = {
   amount: number;
   unitPriceUsd: number | null;
   valueUsd: number | null;
+  valueSource: "historical" | "spot" | "missing";
   feeAlgo: number;
   feeUsd: number;
 };
@@ -111,13 +112,21 @@ export async function computePortfolioSnapshot(wallets: string[], deps: Snapshot
   const txTimestamps = txns.map((txn) => txn.confirmedRoundTime);
   const historicalPrices = await getHistoricalPricesFn(assetKeysForHistory, txTimestamps);
 
-  const getUnitPriceUsd = (assetKey: string, unixTs: number): number | null => {
+  const getPriceQuote = (
+    assetKey: string,
+    unixTs: number
+  ): { unitPriceUsd: number | null; source: "historical" | "spot" | "missing" } => {
     const fromHistory = historicalPrices[getHistoricalPriceKey(assetKey, unixTs)];
-    if (fromHistory !== undefined && fromHistory !== null) {
-      return fromHistory;
+    if (fromHistory !== undefined && fromHistory !== null && Number.isFinite(fromHistory)) {
+      return { unitPriceUsd: fromHistory, source: "historical" };
     }
-    return pricesUsd[assetKey] ?? null;
+    const spot = pricesUsd[assetKey] ?? null;
+    if (spot !== null && Number.isFinite(spot)) {
+      return { unitPriceUsd: spot, source: "spot" };
+    }
+    return { unitPriceUsd: null, source: "missing" };
   };
+  const getUnitPriceUsd = (assetKey: string, unixTs: number): number | null => getPriceQuote(assetKey, unixTs).unitPriceUsd;
 
   const ownWallets = new Set(wallets);
   const events = parseTransactionsToLotEvents({ txns, ownWallets, pricesUsd, decimalsByAsset, getUnitPriceUsd });
@@ -174,7 +183,8 @@ export async function computePortfolioSnapshot(wallets: string[], deps: Snapshot
   for (const txn of txns) {
     const senderOwned = ownWallets.has(txn.sender);
     const feeAlgo = senderOwned ? txn.fee / 1_000_000 : 0;
-    const algoUnitPrice = getUnitPriceUsd("ALGO", txn.confirmedRoundTime) ?? 0;
+    const algoQuote = getPriceQuote("ALGO", txn.confirmedRoundTime);
+    const algoUnitPrice = algoQuote.unitPriceUsd ?? 0;
     const feeUsd = feeAlgo * algoUnitPrice;
 
     if (txn.paymentTransaction) {
@@ -184,7 +194,9 @@ export async function computePortfolioSnapshot(wallets: string[], deps: Snapshot
       const direction: SnapshotTransactionRow["direction"] = senderOwned && receiverOwned ? "self" : senderOwned ? "out" : "in";
       const wallet = senderOwned ? txn.sender : receiver;
       const counterparty = direction === "self" ? receiver : senderOwned ? receiver : txn.sender;
-      const unitPriceUsd = getUnitPriceUsd("ALGO", txn.confirmedRoundTime);
+      const quote = getPriceQuote("ALGO", txn.confirmedRoundTime);
+      const unitPriceUsd = quote.unitPriceUsd;
+      const valueUsd = amount === 0 ? 0 : unitPriceUsd === null ? null : amount * unitPriceUsd;
 
       transactions.push({
         txId: txn.id,
@@ -197,7 +209,8 @@ export async function computePortfolioSnapshot(wallets: string[], deps: Snapshot
         assetName: assetNameByKey.ALGO,
         amount,
         unitPriceUsd,
-        valueUsd: unitPriceUsd === null ? null : amount * unitPriceUsd,
+        valueUsd,
+        valueSource: amount === 0 ? "spot" : quote.source,
         feeAlgo,
         feeUsd
       });
@@ -213,7 +226,9 @@ export async function computePortfolioSnapshot(wallets: string[], deps: Snapshot
       const direction: SnapshotTransactionRow["direction"] = senderOwned && receiverOwned ? "self" : senderOwned ? "out" : "in";
       const wallet = senderOwned ? txn.sender : receiver;
       const counterparty = direction === "self" ? receiver : senderOwned ? receiver : txn.sender;
-      const unitPriceUsd = getUnitPriceUsd(key, txn.confirmedRoundTime);
+      const quote = getPriceQuote(key, txn.confirmedRoundTime);
+      const unitPriceUsd = quote.unitPriceUsd;
+      const valueUsd = qty === 0 ? 0 : unitPriceUsd === null ? null : qty * unitPriceUsd;
 
       if (!assetNameByKey[key]) {
         try {
@@ -235,7 +250,8 @@ export async function computePortfolioSnapshot(wallets: string[], deps: Snapshot
         assetName: assetNameByKey[key],
         amount: qty,
         unitPriceUsd,
-        valueUsd: unitPriceUsd === null ? null : qty * unitPriceUsd,
+        valueUsd,
+        valueSource: qty === 0 ? "spot" : quote.source,
         feeAlgo,
         feeUsd
       });

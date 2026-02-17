@@ -42,6 +42,7 @@ type SnapshotResponse = {
       amount: number;
       unitPriceUsd: number | null;
       valueUsd: number | null;
+      valueSource: "historical" | "spot" | "missing";
       feeAlgo: number;
       feeUsd: number;
     }>;
@@ -353,7 +354,12 @@ export function DashboardClient() {
                         {tx.assetName !== tx.assetKey && <div className="text-xs text-slate-500 dark:text-slate-400">{tx.assetKey}</div>}
                       </td>
                       <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{maskNumber(tx.amount)}</td>
-                      <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{maskUsd(tx.valueUsd)}</td>
+                      <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
+                        {maskUsd(tx.valueUsd)}
+                        {tx.valueSource === "spot" && tx.amount > 0 && (
+                          <span className="ml-1 text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500">est.</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{maskUsd(tx.feeUsd)}</td>
                       <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{shortAddress(tx.wallet)}</td>
                       <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{tx.counterparty ? shortAddress(tx.counterparty) : "-"}</td>

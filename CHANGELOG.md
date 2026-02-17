@@ -41,6 +41,9 @@ All notable changes to the Algorand Portfolio Tracker are documented in this fil
 - Transactions table time renderer now shows `unknown` for invalid timestamps instead of misleading `12/31/1969` fallback dates (2026-02-17 05:27 MST)
 - Fixed transaction valuation fallback: when historical price lookup returns `null` for a date, snapshot now falls back to current spot price instead of leaving tx `Value` empty (2026-02-17 05:34 MST)
 - Added regression test for historical-price-null fallback to spot valuation (`tests/snapshot.test.ts`) (2026-02-17 05:34 MST)
+- Snapshot invalidation now also refreshes automatically when a priced-asset transaction has missing `Value`, preventing stale blank value rows from persisting (2026-02-17 05:44 MST)
+- Transaction rows now carry explicit `valueSource` metadata (`historical`/`spot`/`missing`) and display an `est.` label when spot fallback is used (2026-02-17 05:44 MST)
+- Zero-amount transactions now explicitly render `$0.00` value instead of blank fallback behavior (2026-02-17 05:44 MST)
 
 ## [0.1.0] - 2026-02-16
 

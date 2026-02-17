@@ -51,12 +51,16 @@ export async function GET(request: Request) {
           assetKey: string;
           assetName?: string;
           balance?: number | null;
+          priceUsd?: number | null;
           costBasisUsd?: number | null;
           realizedPnlUsd?: number | null;
           unrealizedPnlUsd?: number | null;
         }>;
         transactions?: Array<{
           ts?: number | null;
+          assetKey?: string;
+          amount?: number | null;
+          valueUsd?: number | null;
         }>;
       }
     | null
@@ -79,13 +83,28 @@ export async function GET(request: Request) {
     const ts = tx.ts;
     return !Number.isFinite(ts) || (ts ?? 0) <= 0;
   });
+  const pricedKeys = new Set(
+    (data?.assets ?? [])
+      .filter((asset) => asset.priceUsd !== null && Number.isFinite(asset.priceUsd))
+      .map((asset) => asset.assetKey)
+  );
+  const hasMissingPricedTxValues = (data?.transactions ?? []).some((tx) => {
+    if (!tx.assetKey || !pricedKeys.has(tx.assetKey)) {
+      return false;
+    }
+    if ((tx.amount ?? 0) === 0) {
+      return false;
+    }
+    return tx.valueUsd === null || !Number.isFinite(tx.valueUsd);
+  });
   const needsRecompute =
     !data ||
     !Array.isArray(data.transactions) ||
     data.transactions.length === 0 ||
     hasInvalidTotals ||
     hasInvalidAssets ||
-    hasInvalidTxTimestamps;
+    hasInvalidTxTimestamps ||
+    hasMissingPricedTxValues;
   if (needsRecompute) {
     const wallets = await prisma.linkedWallet.findMany({
       where: {

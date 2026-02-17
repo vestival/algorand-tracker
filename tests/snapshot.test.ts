@@ -188,5 +188,36 @@ describe("computePortfolioSnapshot", () => {
     });
 
     expect(snapshot.transactions[0]?.valueUsd).toBeCloseTo(0.1);
+    expect(snapshot.transactions[0]?.valueSource).toBe("spot");
+  });
+
+  it("renders zero-value for zero-amount transfers even when price is missing", async () => {
+    const snapshot = await computePortfolioSnapshot(["W1"], {
+      getAccountStateFn: async () => ({
+        address: "W1",
+        algoAmount: 1,
+        assets: [],
+        appsLocalState: []
+      }),
+      getTransactionsFn: async () => [
+        {
+          id: "tx-zero",
+          sender: "W1",
+          fee: 1000,
+          confirmedRoundTime: 1_700_000_000,
+          paymentTransaction: {
+            receiver: "W1",
+            amount: 0
+          }
+        }
+      ],
+      getSpotPricesFn: async () => ({
+        ALGO: null
+      }),
+      getHistoricalPricesFn: async () => ({}),
+      getDefiPositionsFn: async () => []
+    });
+
+    expect(snapshot.transactions[0]?.valueUsd).toBe(0);
   });
 });
