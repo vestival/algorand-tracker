@@ -20,6 +20,9 @@ All notable changes to the Algorand Portfolio Tracker are documented in this fil
 - Corrected per-wallet FIFO attribution to include inbound acquisition lots (receiver-side events), fixing wallet-level cost basis/PnL accuracy (2026-02-17 04:36 MST)
 
 ### Fixed
+- Transactions table now labels token IDs explicitly as `ASA <id>` below the symbol (instead of a bare number), clarifying why IDs appear for ASA assets (2026-02-17 06:16 MST)
+- Transactions `Price` now renders with higher precision (3-6 decimals) for small values so source pricing can be validated more easily (2026-02-17 06:16 MST)
+- Transactions `Fee` now shows native ALGO fee with at least 3 decimals (plus precise USD secondary line), matching on-chain fee readability (2026-02-17 06:16 MST)
 - Disabled NextAuth debug logging in production even if `NEXTAUTH_DEBUG=true`, preventing sensitive auth/provider internals from being written to production logs (2026-02-17 04:36 MST)
 - Added `*.tsbuildinfo` to `.gitignore` and untracked committed `tsconfig.tsbuildinfo` build artifact (2026-02-17 04:36 MST)
 - Added regression tests for wallet-level inbound FIFO attribution and rate-limit behavior (allow/block + fallback path) (2026-02-17 04:36 MST)

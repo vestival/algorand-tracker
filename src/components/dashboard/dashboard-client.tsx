@@ -7,7 +7,7 @@ import { useState } from "react";
 import { UserMenu } from "@/components/auth-buttons";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { apiFetch } from "@/lib/api-client";
-import { formatUsd, getAlgorandExplorerTxUrl, shortAddress } from "@/lib/utils";
+import { formatAlgo, formatUsd, formatUsdPrecise, getAlgorandExplorerTxUrl, shortAddress } from "@/lib/utils";
 
 type SnapshotResponse = {
   snapshot: {
@@ -151,6 +151,8 @@ export function DashboardClient() {
           maximumFractionDigits: 6
         }).format(value);
   const maskUsd = (value: number | null | undefined) => (privacyMode ? "******" : formatUsd(value));
+  const maskUsdPrecise = (value: number | null | undefined) => (privacyMode ? "******" : formatUsdPrecise(value));
+  const maskAlgo = (value: number | null | undefined) => (privacyMode ? "******" : formatAlgo(value));
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
@@ -256,9 +258,7 @@ export function DashboardClient() {
                   <tr className="border-t border-slate-200 dark:border-slate-800" key={asset.assetKey}>
                     <td className="px-4 py-3">
                       <div className="font-medium">{asset.assetName ?? asset.assetKey}</div>
-                      {(asset.assetName ?? asset.assetKey) !== asset.assetKey && (
-                        <div className="text-xs text-slate-500 dark:text-slate-400">{asset.assetKey}</div>
-                      )}
+                      {(asset.assetName ?? asset.assetKey) !== asset.assetKey && <div className="text-xs text-slate-500 dark:text-slate-400">ASA {asset.assetKey}</div>}
                     </td>
                     <td className="px-4 py-3">{maskNumber(asset.balance)}</td>
                     <td className="px-4 py-3">{asset.priceUsd === null ? "no price" : maskUsd(asset.priceUsd)}</td>
@@ -356,17 +356,20 @@ export function DashboardClient() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="font-medium text-slate-900 dark:text-slate-100">{tx.assetName}</div>
-                          {tx.assetName !== tx.assetKey && <div className="text-xs text-slate-500 dark:text-slate-400">{tx.assetKey}</div>}
+                          {tx.assetName !== tx.assetKey && <div className="text-xs text-slate-500 dark:text-slate-400">ASA {tx.assetKey}</div>}
                         </td>
                         <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{maskNumber(tx.amount)}</td>
                         <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
-                          {maskUsd(tx.unitPriceUsd)}
+                          {maskUsdPrecise(tx.unitPriceUsd)}
                           {tx.valueSource === "spot" && tx.amount > 0 && (
                             <span className="ml-1 text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500">est.</span>
                           )}
                         </td>
                         <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{maskUsd(tx.valueUsd)}</td>
-                        <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{maskUsd(tx.feeUsd)}</td>
+                        <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
+                          <div>{maskAlgo(tx.feeAlgo)}</div>
+                          <div className="text-xs text-slate-500 dark:text-slate-400">{maskUsdPrecise(tx.feeUsd)}</div>
+                        </td>
                         <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{shortAddress(tx.wallet)}</td>
                         <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{tx.counterparty ? shortAddress(tx.counterparty) : "-"}</td>
                         <td className="px-4 py-3 text-slate-600 dark:text-slate-300">

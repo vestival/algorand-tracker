@@ -1,12 +1,31 @@
-export function formatUsd(value: number | null | undefined): string {
+function formatUsdWithPrecision(value: number | null | undefined, minFractionDigits: number, maxFractionDigits: number): string {
   if (value === null || value === undefined || !Number.isFinite(value)) {
     return "-";
   }
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
-    maximumFractionDigits: 2
+    minimumFractionDigits: minFractionDigits,
+    maximumFractionDigits: maxFractionDigits
   }).format(value);
+}
+
+export function formatUsd(value: number | null | undefined): string {
+  return formatUsdWithPrecision(value, 2, 2);
+}
+
+export function formatUsdPrecise(value: number | null | undefined): string {
+  return formatUsdWithPrecision(value, 3, 6);
+}
+
+export function formatAlgo(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "-";
+  }
+  return `${new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: 3,
+    maximumFractionDigits: 6
+  }).format(value)} ALGO`;
 }
 
 export function shortAddress(address: string): string {
