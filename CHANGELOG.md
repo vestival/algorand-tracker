@@ -39,6 +39,8 @@ All notable changes to the Algorand Portfolio Tracker are documented in this fil
 - Corrected per-wallet FIFO attribution to include inbound acquisition lots (receiver-side events), fixing wallet-level cost basis/PnL accuracy (2026-02-17 04:36 MST)
 
 ### Fixed
+- Fixed portfolio history asset-state mapping bug in `/api/portfolio/history`: snapshot `assets` were incorrectly read as `assetId` (non-existent) instead of `assetKey`, which collapsed holdings into ALGO and produced false chart deltas; now mapped correctly by `assetKey` (`src/app/api/portfolio/history/route.ts`) (2026-02-18 20:25 MST)
+- Added mapping utility + regression test to ensure latest snapshot asset keys are preserved for historical replay (`src/lib/portfolio/history-mapper.ts`, `tests/history-mapper.test.ts`) (2026-02-18 20:25 MST)
 - Portfolio history no longer collapses to one point per day; it now preserves point resolution per timestamp so trend changes reflect actual event timing (`src/lib/portfolio/history.ts`) (2026-02-18 20:17 MST)
 - Prevented latest anchor overwrite when a transaction shares the same timestamp as snapshot `computedAt`, avoiding false chart jumps to near-zero values (`src/lib/portfolio/history.ts`) (2026-02-18 20:17 MST)
 - Added regression coverage for same-timestamp anchor protection in portfolio history (`tests/history.test.ts`) (2026-02-18 20:17 MST)

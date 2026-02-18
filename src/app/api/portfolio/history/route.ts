@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getEnv } from "@/lib/env";
+import { mapLatestAssetStatesFromSnapshotAssets } from "@/lib/portfolio/history-mapper";
 import { buildPortfolioHistoryFromTransactions } from "@/lib/portfolio/history";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getClientIp } from "@/lib/security/request";
@@ -37,11 +38,7 @@ export async function GET(request: Request) {
   const data = snapshot?.data as
     | {
         totals?: { valueUsd?: number | null };
-        assets?: Array<{
-          assetId?: number | null;
-          balance?: number | null;
-          priceUsd?: number | null;
-        }>;
+        assets?: Array<{ assetKey?: string; balance?: number | null; priceUsd?: number | null }>;
         transactions?: Array<{
           ts?: number | null;
           assetKey?: string;
@@ -64,11 +61,7 @@ export async function GET(request: Request) {
         feeAlgo: tx.feeAlgo ?? 0
       }))
       .filter((tx) => tx.assetKey.length > 0),
-    latestAssetStates: (data?.assets ?? []).map((asset) => ({
-      assetKey: asset.assetId === null || asset.assetId === undefined ? "ALGO" : String(asset.assetId),
-      balance: asset.balance ?? 0,
-      priceUsd: asset.priceUsd ?? null
-    })),
+    latestAssetStates: mapLatestAssetStatesFromSnapshotAssets(data?.assets ?? []),
     latestValueUsd: data?.totals?.valueUsd ?? null,
     latestTs: snapshot?.computedAt ?? null
   });
