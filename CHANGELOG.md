@@ -39,6 +39,8 @@ All notable changes to the Algorand Portfolio Tracker are documented in this fil
 - Corrected per-wallet FIFO attribution to include inbound acquisition lots (receiver-side events), fixing wallet-level cost basis/PnL accuracy (2026-02-17 04:36 MST)
 
 ### Fixed
+- Spot price fetching is now resilient: if `PRICE_API_URL` fails or returns empty data, the app retries against CoinGecko default endpoint and falls back to last known good cached prices to avoid showing `no price` for all assets during transient outages (`src/lib/price/provider.ts`) (2026-02-18 19:58 MST)
+- Added regression tests for price-provider fallback and cached-price recovery on endpoint failures (`tests/price-provider.test.ts`) (2026-02-18 19:58 MST)
 - FIFO cost basis no longer drifts with refresh-only spot price moves: lot accounting now uses historical acquisition-time prices only (no spot fallback in parser/FIFO path), while transaction display still falls back to spot when needed (2026-02-17 19:31 MST)
 - Added regression test to ensure changing spot price does not mutate FIFO remaining cost basis when historical tx-date price is unavailable (`tests/snapshot.test.ts`) (2026-02-17 19:31 MST)
 - Portfolio history data source now replays historical transactions from the latest snapshot payload (instead of sparse snapshot-only points), producing denser and transaction-grounded historical series (2026-02-17 10:20 MST)

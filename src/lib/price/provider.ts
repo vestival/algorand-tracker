@@ -3,6 +3,7 @@ import { getEnv } from "@/lib/env";
 const env = getEnv();
 
 const ALGO_CG_ID = "algorand";
+const DEFAULT_CG_SIMPLE_PRICE_URL = "https://api.coingecko.com/api/v3/simple/price";
 const DEFAULT_ASA_CG_MAP: Record<number, string> = {
   // Stablecoins
   31566704: "usd-coin", // USDC (Algorand)
@@ -19,6 +20,10 @@ const DEFAULT_ASA_CG_MAP: Record<number, string> = {
 };
 
 type PriceMap = Record<string, { usd: number }>;
+type SpotPriceCacheEntry = {
+  usd: number;
+  asOf: number;
+};
 
 function parseAsaMap(): Record<number, string> {
   const map: Record<number, string> = { ...DEFAULT_ASA_CG_MAP };
@@ -67,6 +72,36 @@ function getCoinGeckoApiBase(): string | null {
 }
 
 const historicalCache = new Map<string, number | null>();
+const spotCache = new Map<string, SpotPriceCacheEntry>();
+
+async function fetchSpotPriceMap(endpoint: string, coinIds: string[]): Promise<PriceMap> {
+  if (coinIds.length === 0) {
+    return {};
+  }
+
+  try {
+    const url = new URL(endpoint);
+    url.searchParams.set("ids", coinIds.join(","));
+    url.searchParams.set("vs_currencies", "usd");
+
+    const response = await fetch(url.toString(), { next: { revalidate: 0 } });
+    if (!response.ok) {
+      return {};
+    }
+
+    const data = (await response.json()) as Record<string, { usd?: unknown }>;
+    const out: PriceMap = {};
+    for (const coinId of coinIds) {
+      const usd = data[coinId]?.usd;
+      if (typeof usd === "number" && Number.isFinite(usd) && usd >= 0) {
+        out[coinId] = { usd };
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
 
 export async function getSpotPricesUsd(assetIds: Array<number | null>): Promise<Record<string, number | null>> {
   const unique = Array.from(new Set(assetIds.map((id) => (id === null ? "ALGO" : String(id)))));
@@ -84,15 +119,32 @@ export async function getSpotPricesUsd(assetIds: Array<number | null>): Promise<
     }
   }
 
+  const requestedCoinIds = Array.from(idsToQuery);
   let prices: PriceMap = {};
   if (idsToQuery.size > 0) {
-    const url = new URL(env.PRICE_API_URL);
-    url.searchParams.set("ids", Array.from(idsToQuery).join(","));
-    url.searchParams.set("vs_currencies", "usd");
+    const endpoints = Array.from(new Set([env.PRICE_API_URL, DEFAULT_CG_SIMPLE_PRICE_URL]));
 
-    const response = await fetch(url.toString(), { next: { revalidate: 0 } });
-    if (response.ok) {
-      prices = (await response.json()) as PriceMap;
+    for (const endpoint of endpoints) {
+      const fetched = await fetchSpotPriceMap(endpoint, requestedCoinIds);
+      if (Object.keys(fetched).length > 0) {
+        prices = {
+          ...prices,
+          ...fetched
+        };
+      }
+      const hasAllRequested = requestedCoinIds.every((coinId) => typeof prices[coinId]?.usd === "number");
+      if (hasAllRequested) {
+        break;
+      }
+    }
+
+    for (const [coinId, entry] of Object.entries(prices)) {
+      if (typeof entry.usd === "number" && Number.isFinite(entry.usd)) {
+        spotCache.set(coinId, {
+          usd: entry.usd,
+          asOf: Date.now()
+        });
+      }
     }
   }
 
@@ -100,13 +152,13 @@ export async function getSpotPricesUsd(assetIds: Array<number | null>): Promise<
 
   for (const key of unique) {
     if (key === "ALGO") {
-      out[key] = prices[ALGO_CG_ID]?.usd ?? null;
+      out[key] = prices[ALGO_CG_ID]?.usd ?? spotCache.get(ALGO_CG_ID)?.usd ?? null;
       continue;
     }
 
     const asaId = Number(key);
     const cgId = asaMap[asaId];
-    out[key] = cgId ? prices[cgId]?.usd ?? null : null;
+    out[key] = cgId ? prices[cgId]?.usd ?? spotCache.get(cgId)?.usd ?? null : null;
   }
 
   return out;
