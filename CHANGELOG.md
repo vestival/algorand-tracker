@@ -32,6 +32,7 @@ All notable changes to the Algorand Portfolio Tracker are documented in this fil
 - Unit test coverage for wallet deletion ownership/404 rules via a dedicated deletion service (`tests/wallet-delete.test.ts`) (2026-02-17 04:46 MST)
 
 ### Changed
+- README fully refreshed to match current shipped behavior: wallet analytics tab, transaction-based historical charting, account deletion, i18n/theme/privacy controls, and FIFO historical-pricing rules (2026-02-17 19:37 MST)
 - Complete rewrite of README.md with architecture diagram, annotated project structure, environment variable tables, expanded feature descriptions, and security documentation
 - Added this CHANGELOG.md
 - Hardened rate limiting with persistent audit-log-backed checks (with in-memory fallback on transient DB failures), and switched API routes to async rate-limit enforcement (2026-02-17 04:36 MST)
