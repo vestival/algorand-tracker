@@ -5,6 +5,7 @@ All notable changes to Strategos are documented in this file.
 ## [Unreleased]
 
 ### Added
+- Vercel Web Analytics integration via `@vercel/analytics` and global `<Analytics />` in app layout for production traffic/page-view observability (2026-02-19 14:45 MST)
 - Daily automatic portfolio recompute endpoint for Vercel Cron (`/api/cron/daily-refresh`) secured with `CRON_SECRET`, intended to run at `00:00 UTC` (`vercel.json`) (2026-02-19 11:13 MST)
 - Strategos brand system documentation with identity standards, tone, typography, and color tokens in `docs/BRANDING.md` (2026-02-18 06:27 MST)
 - Legal pages with EN/ES localized content: `/privacy` and `/terms`, including dynamic last-updated date and support email placeholder sourced from environment configuration (2026-02-18 06:27 MST)
