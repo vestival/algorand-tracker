@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Cinzel, Inter } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 
 import { AppFooter } from "@/components/app-footer";
 import { Providers } from "@/components/providers";
@@ -46,6 +47,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {children}
           <AppFooter />
         </Providers>
+        <Analytics />
       </body>
     </html>
   );
