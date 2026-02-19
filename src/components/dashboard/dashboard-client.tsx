@@ -91,20 +91,12 @@ type SnapshotResponse = {
   } | null;
 };
 
-type WalletBundle = {
-  id: string;
-  name: string;
-  wallets: string[];
-  createdAt: string;
-};
-
 type DashboardTab = "overview" | "transactions" | "defi" | "walletAnalytics" | "settings";
 const tabs = ["overview", "transactions", "defi", "walletAnalytics"] as const;
 const historyRanges = ["7d", "30d", "90d", "max"] as const;
 type HistoryRange = (typeof historyRanges)[number];
 type AnalyticsMetric = "value" | "balance";
 type AnalyticsMode = "aggregate" | "perWallet";
-const BUNDLES_STORAGE_KEY = "strategos.walletBundles.v1";
 const ALL_WALLETS_SCOPE = "__all_wallets__";
 
 export function DashboardClient() {
@@ -124,8 +116,7 @@ export function DashboardClient() {
   const [analyticsMode, setAnalyticsMode] = useState<AnalyticsMode>("aggregate");
   const [analyticsAssetKey, setAnalyticsAssetKey] = useState<string>("ALGO");
   const [selectedWallets, setSelectedWallets] = useState<string[]>([]);
-  const [bundles, setBundles] = useState<WalletBundle[]>([]);
-  const [selectedBundleId, setSelectedBundleId] = useState<string>(ALL_WALLETS_SCOPE);
+  const [selectedScopeWallet, setSelectedScopeWallet] = useState<string>(ALL_WALLETS_SCOPE);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -174,31 +165,6 @@ export function DashboardClient() {
   );
 
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(BUNDLES_STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as WalletBundle[];
-      if (!Array.isArray(parsed)) return;
-      setBundles(
-        parsed
-          .filter((bundle) => bundle && typeof bundle.id === "string" && typeof bundle.name === "string" && Array.isArray(bundle.wallets))
-          .map((bundle) => ({
-            id: bundle.id,
-            name: bundle.name,
-            wallets: bundle.wallets.filter((wallet) => typeof wallet === "string"),
-            createdAt: bundle.createdAt ?? new Date().toISOString()
-          }))
-      );
-    } catch {
-      setBundles([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    window.localStorage.setItem(BUNDLES_STORAGE_KEY, JSON.stringify(bundles));
-  }, [bundles]);
-
-  useEffect(() => {
     if (!availableWallets.length) {
       setSelectedWallets([]);
       return;
@@ -212,19 +178,14 @@ export function DashboardClient() {
 
   useEffect(() => {
     if (!availableWallets.length) {
-      setSelectedBundleId(ALL_WALLETS_SCOPE);
+      setSelectedScopeWallet(ALL_WALLETS_SCOPE);
       return;
     }
-
-    setBundles((previous) =>
-      previous
-        .map((bundle) => ({
-          ...bundle,
-          wallets: bundle.wallets.filter((wallet) => availableWallets.includes(wallet))
-        }))
-        .filter((bundle) => bundle.wallets.length > 0)
-    );
-  }, [availableWallets]);
+    if (selectedScopeWallet === ALL_WALLETS_SCOPE) return;
+    if (!availableWallets.includes(selectedScopeWallet)) {
+      setSelectedScopeWallet(ALL_WALLETS_SCOPE);
+    }
+  }, [availableWallets, selectedScopeWallet]);
 
   const availableAssets = useMemo(
     () =>
@@ -242,23 +203,23 @@ export function DashboardClient() {
     }
   }, [availableAssets, analyticsAssetKey]);
 
-  const bundleOptions = useMemo(
+  const scopeOptions = useMemo(
     () => [
       { id: ALL_WALLETS_SCOPE, name: m.dashboard.scope?.allWallets ?? "All wallets" },
-      ...bundles.map((bundle) => ({ id: bundle.id, name: bundle.name }))
+      ...availableWallets.map((wallet) => ({ id: wallet, name: shortAddress(wallet) }))
     ],
-    [bundles, m.dashboard.scope?.allWallets]
+    [availableWallets, m.dashboard.scope?.allWallets]
   );
 
   const scopedWallets = useMemo(() => {
-    if (selectedBundleId === ALL_WALLETS_SCOPE) {
+    if (selectedScopeWallet === ALL_WALLETS_SCOPE) {
       return availableWallets;
     }
-    const bundle = bundles.find((entry) => entry.id === selectedBundleId);
-    if (!bundle) return availableWallets;
-    const filtered = bundle.wallets.filter((wallet) => availableWallets.includes(wallet));
-    return filtered.length > 0 ? filtered : availableWallets;
-  }, [availableWallets, bundles, selectedBundleId]);
+    if (!availableWallets.includes(selectedScopeWallet)) {
+      return availableWallets;
+    }
+    return [selectedScopeWallet];
+  }, [availableWallets, selectedScopeWallet]);
 
   const scopedWalletSet = useMemo(() => new Set(scopedWallets), [scopedWallets]);
 
@@ -469,31 +430,6 @@ export function DashboardClient() {
       ? null
       : ((analyticsEndValue - analyticsStartValue) / analyticsStartValue) * 100;
 
-  const createBundle = () => {
-    const walletsForBundle = selectedWalletSet.length > 0 ? selectedWalletSet : scopedWallets;
-    if (!walletsForBundle.length) return;
-    const name = window.prompt(m.dashboard.scope?.createPrompt ?? "Bundle name");
-    if (!name || !name.trim()) return;
-    const next: WalletBundle = {
-      id: `${Date.now()}`,
-      name: name.trim(),
-      wallets: walletsForBundle,
-      createdAt: new Date().toISOString()
-    };
-    setBundles((prev) => [...prev, next]);
-    setSelectedBundleId(next.id);
-  };
-
-  const deleteBundle = () => {
-    if (selectedBundleId === ALL_WALLETS_SCOPE) return;
-    const bundle = bundles.find((entry) => entry.id === selectedBundleId);
-    if (!bundle) return;
-    const confirmText = (m.dashboard.scope?.deleteConfirm ?? "Delete bundle {name}?").replace("{name}", bundle.name);
-    if (!window.confirm(confirmText)) return;
-    setBundles((prev) => prev.filter((entry) => entry.id !== selectedBundleId));
-    setSelectedBundleId(ALL_WALLETS_SCOPE);
-  };
-
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900 dark:bg-[#0F172A] dark:text-[#F8FAFC]">
       <div className="mx-auto max-w-6xl p-4 md:p-8">
@@ -545,30 +481,15 @@ export function DashboardClient() {
           <span className="text-xs uppercase tracking-wide text-slate-500 dark:text-[#94A3B8]">{m.dashboard.scope?.label ?? "Scope"}</span>
           <select
             className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-700 dark:border-[#334155] dark:bg-[#0F172A] dark:text-[#E2E8F0]"
-            value={selectedBundleId}
-            onChange={(event) => setSelectedBundleId(event.target.value)}
+            value={selectedScopeWallet}
+            onChange={(event) => setSelectedScopeWallet(event.target.value)}
           >
-            {bundleOptions.map((bundle) => (
-              <option key={bundle.id} value={bundle.id}>
-                {bundle.name}
+            {scopeOptions.map((scope) => (
+              <option key={scope.id} value={scope.id}>
+                {scope.name}
               </option>
             ))}
           </select>
-          <button
-            type="button"
-            className="rounded-md border border-slate-300 px-2 py-1.5 text-xs text-slate-700 hover:bg-slate-100 dark:border-[#334155] dark:text-[#CBD5E1] dark:hover:bg-[#1E293B]"
-            onClick={createBundle}
-          >
-            {m.dashboard.scope?.saveCurrent ?? "Save current as bundle"}
-          </button>
-          <button
-            type="button"
-            className="rounded-md border border-rose-800 px-2 py-1.5 text-xs text-rose-300 hover:bg-rose-950/40 disabled:opacity-50"
-            onClick={deleteBundle}
-            disabled={selectedBundleId === ALL_WALLETS_SCOPE}
-          >
-            {m.dashboard.scope?.delete ?? "Delete bundle"}
-          </button>
           <span className="ml-auto text-xs text-slate-500 dark:text-[#94A3B8]">
             {(m.dashboard.scope?.walletsInScope ?? "{count} wallets").replace("{count}", String(scopedWallets.length))}
           </span>

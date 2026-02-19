@@ -40,6 +40,7 @@ All notable changes to Strategos are documented in this file.
 - Unit test coverage for wallet deletion ownership/404 rules via a dedicated deletion service (`tests/wallet-delete.test.ts`) (2026-02-17 04:46 MST)
 
 ### Changed
+- Simplified dashboard `Scope` UX: removed bundle controls (`Save current as bundle` / `Delete bundle`) and replaced scope selector options with only `All wallets` + each linked wallet address, so scope behavior is explicit and not confusing (2026-02-19 16:43 MST)
 - Overview portfolio chart now reads from `/api/portfolio/history` (daily portfolio valuation) instead of deriving directly from transaction rows in the client, so chart evolution reflects daily portfolio value (price-by-day) under current wallet scope (2026-02-19 16:33 MST)
 - Restored dual theme behavior (light/dark) by removing forced dark theme in `ThemeProvider`, enabling runtime theme switching, and updating dashboard/header controls and key pages (`landing`, `wallets`, `legal`, user menu, language toggle) to render correctly in both themes (2026-02-19 16:14 MST)
 - Overview portfolio history chart now uses transaction replay scoped to the selected wallet set (aggregate of wallet-level series), improving consistency with visible transaction data (2026-02-19 14:58 MST)
