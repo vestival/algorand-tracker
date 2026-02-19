@@ -40,6 +40,7 @@ All notable changes to Strategos are documented in this file.
 - Unit test coverage for wallet deletion ownership/404 rules via a dedicated deletion service (`tests/wallet-delete.test.ts`) (2026-02-17 04:46 MST)
 
 ### Changed
+- Overview portfolio chart now reads from `/api/portfolio/history` (daily portfolio valuation) instead of deriving directly from transaction rows in the client, so chart evolution reflects daily portfolio value (price-by-day) under current wallet scope (2026-02-19 16:33 MST)
 - Restored dual theme behavior (light/dark) by removing forced dark theme in `ThemeProvider`, enabling runtime theme switching, and updating dashboard/header controls and key pages (`landing`, `wallets`, `legal`, user menu, language toggle) to render correctly in both themes (2026-02-19 16:14 MST)
 - Overview portfolio history chart now uses transaction replay scoped to the selected wallet set (aggregate of wallet-level series), improving consistency with visible transaction data (2026-02-19 14:58 MST)
 - Rebranded application identity from prior naming to **Strategos** across metadata, package naming, and documentation titles (2026-02-18 06:27 MST)
@@ -52,6 +53,9 @@ All notable changes to Strategos are documented in this file.
 - Corrected per-wallet FIFO attribution to include inbound acquisition lots (receiver-side events), fixing wallet-level cost basis/PnL accuracy (2026-02-17 04:36 MST)
 
 ### Fixed
+- `/api/portfolio/history` now supports wallet scoping (`?wallet=` params) and computes latest value/asset balances for the selected wallets only, preventing mismatches between selected scope and displayed history (2026-02-19 16:33 MST)
+- Historical price fetch no longer depends on `PRICE_API_URL` being CoinGecko; daily historical pricing now always uses CoinGecko API base fallback, restoring historical valuation/cost-basis inputs when another spot provider is configured (2026-02-19 16:33 MST)
+- FIFO acquisition pricing now uses nearest available historical day price when exact tx-day price is missing, reducing zero-cost lots (e.g., TALGO) that caused distorted cost basis/unrealized PnL (2026-02-19 16:33 MST)
 - Manual refresh policy enforced server-side: max `2` manual refreshes per UTC day per user, with exemption for `victor.estival@gmail.com` (`MANUAL_REFRESH_DAILY_MAX`, `REFRESH_EXEMPT_EMAIL`) (2026-02-19 11:13 MST)
 - Portfolio history now uses UTC daily close points (EOD) from anchored balances plus per-day pricing, eliminating misleading intra-day jumps that did not match transaction understanding (`src/lib/portfolio/history.ts`, `src/app/api/portfolio/history/route.ts`) (2026-02-19 11:13 MST)
 - Snapshot top-level totals now aggregate cost basis/value/unrealized only from assets with positive current balance, aligning summary cards with visible active holdings (`src/lib/portfolio/snapshot.ts`) (2026-02-19 11:13 MST)

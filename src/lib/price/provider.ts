@@ -4,6 +4,7 @@ const env = getEnv();
 
 const ALGO_CG_ID = "algorand";
 const DEFAULT_CG_SIMPLE_PRICE_URL = "https://api.coingecko.com/api/v3/simple/price";
+const DEFAULT_CG_API_BASE = "https://api.coingecko.com/api/v3";
 const DEFAULT_LLAMA_PRICE_URL = "https://coins.llama.fi/prices/current";
 const DEFAULT_ASA_CG_MAP: Record<number, string> = {
   // Stablecoins
@@ -278,10 +279,7 @@ export async function getHistoricalPricesUsdByDay(
   unixTimestamps: number[]
 ): Promise<Record<string, number | null>> {
   const out: Record<string, number | null> = {};
-  const base = getCoinGeckoApiBase();
-  if (!base) {
-    return out;
-  }
+  const base = getCoinGeckoApiBase() ?? DEFAULT_CG_API_BASE;
 
   const days = Array.from(new Set(unixTimestamps.filter((ts) => Number.isFinite(ts) && ts > 0).map((ts) => formatUtcDay(ts))));
   if (days.length === 0) {

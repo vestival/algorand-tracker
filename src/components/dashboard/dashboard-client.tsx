@@ -309,30 +309,22 @@ export function DashboardClient() {
     [scopedWalletSet, snapshot?.transactions]
   );
 
-  const historySeries = useMemo(() => {
-    const txRows = scopedTransactions.map((tx) => ({
-      ts: tx.ts,
-      wallet: tx.wallet,
-      assetKey: tx.assetKey,
-      amount: tx.amount,
-      direction: tx.direction,
-      unitPriceUsd: tx.unitPriceUsd,
-      feeAlgo: tx.feeAlgo
-    }));
-    const latestValueByWallet = Object.fromEntries(
-      (snapshot?.wallets ?? [])
-        .filter((wallet) => scopedWalletSet.has(wallet.wallet))
-        .map((wallet) => [wallet.wallet, wallet.totalValueUsd])
-    );
-    const series = buildPerWalletValueSeries({
-      transactions: txRows,
-      wallets: scopedWallets,
-      latestValueByWallet,
-      latestTs: snapshot?.computedAt ?? null
-    });
-    const aligned = alignSeriesByTimestamp(series);
-    return sumAlignedSeries(aligned).points.map((point) => ({ ts: point.ts, valueUsd: point.value }));
-  }, [scopedTransactions, scopedWalletSet, scopedWallets, snapshot?.wallets, snapshot?.computedAt]);
+  const historyQuery = useQuery({
+    queryKey: ["portfolio-history", [...scopedWallets].sort().join(","), snapshot?.computedAt],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      for (const wallet of scopedWallets) {
+        params.append("wallet", wallet);
+      }
+      const query = params.toString();
+      return apiFetch<{ history: Array<{ ts: string; valueUsd: number }> }>(
+        `/api/portfolio/history${query ? `?${query}` : ""}`
+      );
+    },
+    enabled: Boolean(snapshot)
+  });
+
+  const historySeries = historyQuery.data?.history ?? [];
 
   const filteredHistory = filterHistoryByRange(historySeries, historyRange);
   const historyStartValue = filteredHistory[0]?.valueUsd ?? null;

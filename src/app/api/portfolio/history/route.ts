@@ -39,9 +39,16 @@ export async function GET(request: Request) {
   const data = snapshot?.data as
     | {
         totals?: { valueUsd?: number | null };
-        assets?: Array<{ assetKey?: string; balance?: number | null; priceUsd?: number | null }>;
+        wallets?: Array<{ wallet?: string | null; totalValueUsd?: number | null }>;
+        assets?: Array<{
+          assetKey?: string;
+          balance?: number | null;
+          priceUsd?: number | null;
+          walletBreakdown?: Array<{ wallet?: string | null; balance?: number | null }>;
+        }>;
         transactions?: Array<{
           ts?: number | null;
+          wallet?: string | null;
           assetKey?: string;
           amount?: number | null;
           direction?: "in" | "out" | "self";
@@ -51,30 +58,68 @@ export async function GET(request: Request) {
       }
     | undefined;
 
+  const url = new URL(request.url);
+  const scopedWallets = new Set(
+    url.searchParams
+      .getAll("wallet")
+      .map((wallet) => wallet.trim())
+      .filter((wallet) => wallet.length > 0)
+  );
+  const hasScope = scopedWallets.size > 0;
+
+  const scopedTransactions = (data?.transactions ?? [])
+    .filter((tx) => {
+      if (!hasScope) return true;
+      return tx.wallet ? scopedWallets.has(tx.wallet) : false;
+    })
+    .map((tx) => ({
+      ts: tx.ts ?? 0,
+      assetKey: tx.assetKey ?? "ALGO",
+      amount: tx.amount ?? 0,
+      direction: tx.direction ?? "self",
+      unitPriceUsd: tx.unitPriceUsd ?? null,
+      feeAlgo: tx.feeAlgo ?? 0
+    }))
+    .filter((tx) => tx.assetKey.length > 0);
+
+  const scopedAssets = (data?.assets ?? []).map((asset) => {
+    if (!hasScope) {
+      return {
+        assetKey: asset.assetKey ?? "",
+        balance: asset.balance ?? 0,
+        priceUsd: asset.priceUsd ?? null
+      };
+    }
+
+    const scopedBalance = (asset.walletBreakdown ?? [])
+      .filter((entry) => (entry.wallet ? scopedWallets.has(entry.wallet) : false))
+      .reduce((sum, entry) => sum + (entry.balance ?? 0), 0);
+
+    return {
+      assetKey: asset.assetKey ?? "",
+      balance: scopedBalance,
+      priceUsd: asset.priceUsd ?? null
+    };
+  });
+
+  const latestValueUsd = hasScope
+    ? (data?.wallets ?? [])
+        .filter((wallet) => (wallet.wallet ? scopedWallets.has(wallet.wallet) : false))
+        .reduce((sum, wallet) => sum + (wallet.totalValueUsd ?? 0), 0)
+    : (data?.totals?.valueUsd ?? null);
+
   const history = buildPortfolioHistoryFromTransactions({
-    transactions: (data?.transactions ?? [])
-      .map((tx) => ({
-        ts: tx.ts ?? 0,
-        assetKey: tx.assetKey ?? "ALGO",
-        amount: tx.amount ?? 0,
-        direction: tx.direction ?? "self",
-        unitPriceUsd: tx.unitPriceUsd ?? null,
-        feeAlgo: tx.feeAlgo ?? 0
-      }))
-      .filter((tx) => tx.assetKey.length > 0),
-    latestAssetStates: mapLatestAssetStatesFromSnapshotAssets(data?.assets ?? []),
+    transactions: scopedTransactions,
+    latestAssetStates: mapLatestAssetStatesFromSnapshotAssets(scopedAssets),
     dailyPrices: await buildDailyPriceRows({
-      assets: data?.assets ?? [],
-      transactions:
-        (data?.transactions ?? [])
-          .map((tx) => ({
-            ts: tx.ts ?? 0,
-            assetKey: tx.assetKey ?? "ALGO"
-          }))
-          .filter((tx) => tx.assetKey.length > 0) ?? [],
+      assets: scopedAssets,
+      transactions: scopedTransactions.map((tx) => ({
+        ts: tx.ts,
+        assetKey: tx.assetKey
+      })),
       latestTs: snapshot?.computedAt ?? null
     }),
-    latestValueUsd: data?.totals?.valueUsd ?? null,
+    latestValueUsd,
     latestTs: snapshot?.computedAt ?? null
   });
 

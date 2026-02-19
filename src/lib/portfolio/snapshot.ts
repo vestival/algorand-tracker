@@ -145,6 +145,7 @@ export async function computePortfolioSnapshot(wallets: string[], deps: Snapshot
   const assetKeysForHistory = ["ALGO", ...Object.keys(decimalsByAsset)];
   const txTimestamps = txns.map((txn) => txn.confirmedRoundTime);
   const historicalPrices = await getHistoricalPricesFn(assetKeysForHistory, txTimestamps);
+  const nearestHistoricalByAsset = buildNearestHistoricalIndex(historicalPrices);
 
   const getPriceQuote = (
     assetKey: string,
@@ -173,7 +174,15 @@ export async function computePortfolioSnapshot(wallets: string[], deps: Snapshot
   };
   const getHistoricalUnitPriceUsd = (assetKey: string, unixTs: number): number | null => {
     const fromHistory = historicalPrices[getHistoricalPriceKey(assetKey, unixTs)];
-    return fromHistory !== undefined && fromHistory !== null && Number.isFinite(fromHistory) ? fromHistory : null;
+    if (fromHistory !== undefined && fromHistory !== null && Number.isFinite(fromHistory)) {
+      return fromHistory;
+    }
+
+    const nearest = resolveNearestHistoricalPrice(nearestHistoricalByAsset, assetKey, unixTs);
+    if (nearest !== null) {
+      return nearest;
+    }
+    return null;
   };
 
   const ownWallets = new Set(wallets);
@@ -432,4 +441,58 @@ export async function computePortfolioSnapshot(wallets: string[], deps: Snapshot
       note: "Estimated yield from detected staking/DeFi activity. Historical decomposition is partial in MVP."
     }
   };
+}
+
+type HistoricalPoint = { ts: number; priceUsd: number };
+
+function buildNearestHistoricalIndex(historicalPrices: Record<string, number | null>): Record<string, HistoricalPoint[]> {
+  const byAsset: Record<string, HistoricalPoint[]> = {};
+
+  for (const [compositeKey, price] of Object.entries(historicalPrices)) {
+    if (price === null || !Number.isFinite(price)) {
+      continue;
+    }
+    const splitAt = compositeKey.indexOf(":");
+    if (splitAt <= 0) {
+      continue;
+    }
+    const assetKey = compositeKey.slice(0, splitAt);
+    const dayPart = compositeKey.slice(splitAt + 1);
+    const [dd, mm, yyyy] = dayPart.split("-").map(Number);
+    if (!yyyy || !mm || !dd) {
+      continue;
+    }
+    const dayTs = Date.UTC(yyyy, mm - 1, dd) / 1000;
+    byAsset[assetKey] ??= [];
+    byAsset[assetKey].push({ ts: dayTs, priceUsd: price });
+  }
+
+  for (const assetKey of Object.keys(byAsset)) {
+    byAsset[assetKey].sort((a, b) => a.ts - b.ts);
+  }
+
+  return byAsset;
+}
+
+function resolveNearestHistoricalPrice(
+  index: Record<string, HistoricalPoint[]>,
+  assetKey: string,
+  unixTs: number
+): number | null {
+  const points = index[assetKey];
+  if (!points || points.length === 0 || !Number.isFinite(unixTs) || unixTs <= 0) {
+    return null;
+  }
+
+  let nearest: HistoricalPoint | null = null;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+  for (const point of points) {
+    const distance = Math.abs(point.ts - unixTs);
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearest = point;
+    }
+  }
+
+  return nearest?.priceUsd ?? null;
 }
