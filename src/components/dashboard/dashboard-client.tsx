@@ -19,6 +19,9 @@ import {
 } from "@/lib/portfolio/wallet-analytics";
 import { formatAlgo, formatUsd, formatUsdPrecise, getAlgorandExplorerTxUrl, shortAddress } from "@/lib/utils";
 
+type PriceSource = "configured" | "coingecko" | "defillama" | "cache" | "missing";
+type PriceConfidence = "high" | "medium" | "low";
+
 type SnapshotResponse = {
   snapshot: {
     computedAt: string;
@@ -39,6 +42,8 @@ type SnapshotResponse = {
         valueUsd: number | null;
       }>;
       priceUsd: number | null;
+      priceSource: PriceSource;
+      priceConfidence: PriceConfidence;
       valueUsd: number | null;
       costBasisUsd: number;
       realizedPnlUsd: number;
@@ -56,6 +61,8 @@ type SnapshotResponse = {
       assetName: string;
       amount: number;
       unitPriceUsd: number | null;
+      unitPriceSource: PriceSource;
+      unitPriceConfidence: PriceConfidence;
       valueUsd: number | null;
       valueSource: "historical" | "spot" | "missing";
       feeAlgo: number;
@@ -83,11 +90,11 @@ type SnapshotResponse = {
   } | null;
 };
 
-type HistoryResponse = {
-  history: Array<{
-    ts: string;
-    valueUsd: number;
-  }>;
+type WalletBundle = {
+  id: string;
+  name: string;
+  wallets: string[];
+  createdAt: string;
 };
 
 type DashboardTab = "overview" | "transactions" | "defi" | "walletAnalytics" | "settings";
@@ -96,6 +103,8 @@ const historyRanges = ["7d", "30d", "90d", "max"] as const;
 type HistoryRange = (typeof historyRanges)[number];
 type AnalyticsMetric = "value" | "balance";
 type AnalyticsMode = "aggregate" | "perWallet";
+const BUNDLES_STORAGE_KEY = "strategos.walletBundles.v1";
+const ALL_WALLETS_SCOPE = "__all_wallets__";
 
 export function DashboardClient() {
   const { m } = useLanguage();
@@ -114,6 +123,8 @@ export function DashboardClient() {
   const [analyticsMode, setAnalyticsMode] = useState<AnalyticsMode>("aggregate");
   const [analyticsAssetKey, setAnalyticsAssetKey] = useState<string>("ALGO");
   const [selectedWallets, setSelectedWallets] = useState<string[]>([]);
+  const [bundles, setBundles] = useState<WalletBundle[]>([]);
+  const [selectedBundleId, setSelectedBundleId] = useState<string>(ALL_WALLETS_SCOPE);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -141,16 +152,11 @@ export function DashboardClient() {
     queryKey: ["portfolio-snapshot"],
     queryFn: () => apiFetch<SnapshotResponse>("/api/portfolio/snapshot")
   });
-  const historyQuery = useQuery({
-    queryKey: ["portfolio-history"],
-    queryFn: () => apiFetch<HistoryResponse>("/api/portfolio/history")
-  });
 
   const refreshMutation = useMutation({
     mutationFn: () => apiFetch<{ ok: boolean }>("/api/portfolio/refresh", { method: "POST", body: "{}" }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["portfolio-snapshot"] });
-      await queryClient.invalidateQueries({ queryKey: ["portfolio-history"] });
     }
   });
   const deleteAccountMutation = useMutation({
@@ -167,6 +173,31 @@ export function DashboardClient() {
   );
 
   useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(BUNDLES_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as WalletBundle[];
+      if (!Array.isArray(parsed)) return;
+      setBundles(
+        parsed
+          .filter((bundle) => bundle && typeof bundle.id === "string" && typeof bundle.name === "string" && Array.isArray(bundle.wallets))
+          .map((bundle) => ({
+            id: bundle.id,
+            name: bundle.name,
+            wallets: bundle.wallets.filter((wallet) => typeof wallet === "string"),
+            createdAt: bundle.createdAt ?? new Date().toISOString()
+          }))
+      );
+    } catch {
+      setBundles([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(BUNDLES_STORAGE_KEY, JSON.stringify(bundles));
+  }, [bundles]);
+
+  useEffect(() => {
     if (!availableWallets.length) {
       setSelectedWallets([]);
       return;
@@ -176,6 +207,22 @@ export function DashboardClient() {
       const stillValid = previous.filter((wallet) => availableWallets.includes(wallet));
       return stillValid.length > 0 ? stillValid : availableWallets;
     });
+  }, [availableWallets]);
+
+  useEffect(() => {
+    if (!availableWallets.length) {
+      setSelectedBundleId(ALL_WALLETS_SCOPE);
+      return;
+    }
+
+    setBundles((previous) =>
+      previous
+        .map((bundle) => ({
+          ...bundle,
+          wallets: bundle.wallets.filter((wallet) => availableWallets.includes(wallet))
+        }))
+        .filter((bundle) => bundle.wallets.length > 0)
+    );
   }, [availableWallets]);
 
   const availableAssets = useMemo(
@@ -194,18 +241,108 @@ export function DashboardClient() {
     }
   }, [availableAssets, analyticsAssetKey]);
 
-  const history = historyQuery.data?.history ?? [];
-  const filteredHistory = filterHistoryByRange(history, historyRange);
+  const bundleOptions = useMemo(
+    () => [
+      { id: ALL_WALLETS_SCOPE, name: m.dashboard.scope?.allWallets ?? "All wallets" },
+      ...bundles.map((bundle) => ({ id: bundle.id, name: bundle.name }))
+    ],
+    [bundles, m.dashboard.scope?.allWallets]
+  );
+
+  const scopedWallets = useMemo(() => {
+    if (selectedBundleId === ALL_WALLETS_SCOPE) {
+      return availableWallets;
+    }
+    const bundle = bundles.find((entry) => entry.id === selectedBundleId);
+    if (!bundle) return availableWallets;
+    const filtered = bundle.wallets.filter((wallet) => availableWallets.includes(wallet));
+    return filtered.length > 0 ? filtered : availableWallets;
+  }, [availableWallets, bundles, selectedBundleId]);
+
+  const scopedWalletSet = useMemo(() => new Set(scopedWallets), [scopedWallets]);
+
+  const scopedAssets = useMemo(
+    () =>
+      (snapshot?.assets ?? []).map((asset) => {
+        const walletBreakdown = (asset.walletBreakdown ?? []).filter((entry) => scopedWalletSet.has(entry.wallet));
+        const scopedBalance = walletBreakdown.reduce((sum, entry) => sum + entry.balance, 0);
+        const scopedValue = walletBreakdown.some((entry) => entry.valueUsd !== null)
+          ? walletBreakdown.reduce((sum, entry) => sum + (entry.valueUsd ?? 0), 0)
+          : asset.priceUsd === null
+            ? null
+            : scopedBalance * asset.priceUsd;
+        const ratio = asset.balance > 0 ? scopedBalance / asset.balance : 0;
+        return {
+          ...asset,
+          balance: scopedBalance,
+          valueUsd: scopedValue,
+          costBasisUsd: asset.costBasisUsd * ratio,
+          unrealizedPnlUsd: scopedValue === null ? null : scopedValue - asset.costBasisUsd * ratio,
+          walletBreakdown
+        };
+      }),
+    [scopedWalletSet, snapshot?.assets]
+  );
+
+  const scopedTotals = useMemo(
+    () =>
+      scopedAssets.reduce(
+        (acc, asset) => {
+          if (asset.balance <= 0) return acc;
+          if (asset.valueUsd !== null) {
+            acc.valueUsd += asset.valueUsd;
+          }
+          acc.costBasisUsd += asset.costBasisUsd;
+          if (asset.unrealizedPnlUsd !== null) {
+            acc.unrealizedPnlUsd += asset.unrealizedPnlUsd;
+          }
+          return acc;
+        },
+        { valueUsd: 0, costBasisUsd: 0, unrealizedPnlUsd: 0 }
+      ),
+    [scopedAssets]
+  );
+
+  const scopedTransactions = useMemo(
+    () => (snapshot?.transactions ?? []).filter((tx) => scopedWalletSet.has(tx.wallet)),
+    [scopedWalletSet, snapshot?.transactions]
+  );
+
+  const historySeries = useMemo(() => {
+    const txRows = scopedTransactions.map((tx) => ({
+      ts: tx.ts,
+      wallet: tx.wallet,
+      assetKey: tx.assetKey,
+      amount: tx.amount,
+      direction: tx.direction,
+      unitPriceUsd: tx.unitPriceUsd,
+      feeAlgo: tx.feeAlgo
+    }));
+    const latestValueByWallet = Object.fromEntries(
+      (snapshot?.wallets ?? [])
+        .filter((wallet) => scopedWalletSet.has(wallet.wallet))
+        .map((wallet) => [wallet.wallet, wallet.totalValueUsd])
+    );
+    const series = buildPerWalletValueSeries({
+      transactions: txRows,
+      wallets: scopedWallets,
+      latestValueByWallet,
+      latestTs: snapshot?.computedAt ?? null
+    });
+    const aligned = alignSeriesByTimestamp(series);
+    return sumAlignedSeries(aligned).points.map((point) => ({ ts: point.ts, valueUsd: point.value }));
+  }, [scopedTransactions, scopedWalletSet, scopedWallets, snapshot?.wallets, snapshot?.computedAt]);
+
+  const filteredHistory = filterHistoryByRange(historySeries, historyRange);
   const historyStartValue = filteredHistory[0]?.valueUsd ?? null;
   const historyEndValue = filteredHistory[filteredHistory.length - 1]?.valueUsd ?? null;
-  const historyDeltaUsd =
-    historyStartValue === null || historyEndValue === null ? null : historyEndValue - historyStartValue;
+  const historyDeltaUsd = historyStartValue === null || historyEndValue === null ? null : historyEndValue - historyStartValue;
   const historyDeltaPct =
     historyStartValue === null || historyEndValue === null || historyStartValue === 0
       ? null
       : ((historyEndValue - historyStartValue) / historyStartValue) * 100;
-  const visibleAssets = (snapshot?.assets ?? []).filter((asset) => !hideZeroBalances || Math.abs(asset.balance) > 0);
-  const filteredTransactions = (snapshot?.transactions ?? []).filter((tx) => {
+  const visibleAssets = scopedAssets.filter((asset) => !hideZeroBalances || Math.abs(asset.balance) > 0);
+  const filteredTransactions = scopedTransactions.filter((tx) => {
     if (txDirectionFilter !== "all" && tx.direction !== txDirectionFilter) return false;
     if (txTypeFilter !== "all" && tx.txType !== txTypeFilter) return false;
     if (!txSearch.trim()) return true;
@@ -220,7 +357,9 @@ export function DashboardClient() {
     );
   });
   const defaultAprPct = snapshot?.yieldEstimate.estimatedAprPct ?? 0;
-  const defiRows = (snapshot?.defiPositions ?? []).map((p, index) => {
+  const defiRows = (snapshot?.defiPositions ?? [])
+    .filter((position) => scopedWalletSet.has(position.wallet))
+    .map((p, index) => {
     const nowUsd = p.valueUsd ?? 0;
     const syntheticGrowthPct = 0.12;
     const atDepositUsd = nowUsd > 0 ? nowUsd / (1 + syntheticGrowthPct) : null;
@@ -244,7 +383,7 @@ export function DashboardClient() {
       aprPct: aprPct || null,
       dailyYieldUsd
     };
-  });
+    });
   const filteredDefiRows = defiRows.filter((row) => {
     if (!defiSearch.trim()) return true;
     const needle = defiSearch.trim().toLowerCase();
@@ -265,7 +404,10 @@ export function DashboardClient() {
   const maskUsdPrecise = (value: number | null | undefined) => (privacyMode ? "******" : formatUsdPrecise(value));
   const maskAlgo = (value: number | null | undefined) => (privacyMode ? "******" : formatAlgo(value));
 
-  const selectedWalletSet = selectedWallets.length > 0 ? selectedWallets : availableWallets;
+  const selectedWalletSet =
+    selectedWallets.length > 0
+      ? selectedWallets.filter((wallet) => scopedWalletSet.has(wallet))
+      : scopedWallets;
 
   const latestValueByWallet = useMemo(
     () =>
@@ -334,6 +476,31 @@ export function DashboardClient() {
       ? null
       : ((analyticsEndValue - analyticsStartValue) / analyticsStartValue) * 100;
 
+  const createBundle = () => {
+    const walletsForBundle = selectedWalletSet.length > 0 ? selectedWalletSet : scopedWallets;
+    if (!walletsForBundle.length) return;
+    const name = window.prompt(m.dashboard.scope?.createPrompt ?? "Bundle name");
+    if (!name || !name.trim()) return;
+    const next: WalletBundle = {
+      id: `${Date.now()}`,
+      name: name.trim(),
+      wallets: walletsForBundle,
+      createdAt: new Date().toISOString()
+    };
+    setBundles((prev) => [...prev, next]);
+    setSelectedBundleId(next.id);
+  };
+
+  const deleteBundle = () => {
+    if (selectedBundleId === ALL_WALLETS_SCOPE) return;
+    const bundle = bundles.find((entry) => entry.id === selectedBundleId);
+    if (!bundle) return;
+    const confirmText = (m.dashboard.scope?.deleteConfirm ?? "Delete bundle {name}?").replace("{name}", bundle.name);
+    if (!window.confirm(confirmText)) return;
+    setBundles((prev) => prev.filter((entry) => entry.id !== selectedBundleId));
+    setSelectedBundleId(ALL_WALLETS_SCOPE);
+  };
+
   return (
     <main className="min-h-screen bg-[#0F172A] text-[#F8FAFC]">
       <div className="mx-auto max-w-6xl p-4 md:p-8">
@@ -380,10 +547,43 @@ export function DashboardClient() {
           ))}
         </nav>
 
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-[#1E293B] bg-[#0B1630] p-2">
+          <span className="text-xs uppercase tracking-wide text-[#94A3B8]">{m.dashboard.scope?.label ?? "Scope"}</span>
+          <select
+            className="rounded-md border border-[#334155] bg-[#0F172A] px-2 py-1.5 text-sm text-[#E2E8F0]"
+            value={selectedBundleId}
+            onChange={(event) => setSelectedBundleId(event.target.value)}
+          >
+            {bundleOptions.map((bundle) => (
+              <option key={bundle.id} value={bundle.id}>
+                {bundle.name}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="rounded-md border border-[#334155] px-2 py-1.5 text-xs text-[#CBD5E1] hover:bg-[#1E293B]"
+            onClick={createBundle}
+          >
+            {m.dashboard.scope?.saveCurrent ?? "Save current as bundle"}
+          </button>
+          <button
+            type="button"
+            className="rounded-md border border-rose-800 px-2 py-1.5 text-xs text-rose-300 hover:bg-rose-950/40 disabled:opacity-50"
+            onClick={deleteBundle}
+            disabled={selectedBundleId === ALL_WALLETS_SCOPE}
+          >
+            {m.dashboard.scope?.delete ?? "Delete bundle"}
+          </button>
+          <span className="ml-auto text-xs text-[#94A3B8]">
+            {(m.dashboard.scope?.walletsInScope ?? "{count} wallets").replace("{count}", String(scopedWallets.length))}
+          </span>
+        </div>
+
         <div className="mb-6 grid gap-3 md:grid-cols-3">
-          <Card label={m.dashboard.cards.totalValue} value={maskUsd(snapshot?.totals.valueUsd)} helpText={m.dashboard.cards.totalValueHelp} />
-          <Card label={m.dashboard.cards.costBasis} value={maskUsd(snapshot?.totals.costBasisUsd)} helpText={m.dashboard.cards.costBasisHelp} />
-          <Card label={m.dashboard.cards.unrealizedPnl} value={maskUsd(snapshot?.totals.unrealizedPnlUsd)} helpText={m.dashboard.cards.unrealizedHelp} />
+          <Card label={m.dashboard.cards.totalValue} value={maskUsd(scopedTotals.valueUsd)} helpText={m.dashboard.cards.totalValueHelp} />
+          <Card label={m.dashboard.cards.costBasis} value={maskUsd(scopedTotals.costBasisUsd)} helpText={m.dashboard.cards.costBasisHelp} />
+          <Card label={m.dashboard.cards.unrealizedPnl} value={maskUsd(scopedTotals.unrealizedPnlUsd)} helpText={m.dashboard.cards.unrealizedHelp} />
         </div>
 
         {refreshMutation.isError && (
@@ -489,7 +689,18 @@ export function DashboardClient() {
                         {(asset.assetName ?? asset.assetKey) !== asset.assetKey && <div className="text-xs text-slate-500 dark:text-slate-400">ASA {asset.assetKey}</div>}
                       </td>
                       <td className="px-4 py-3">{maskNumber(asset.balance)}</td>
-                      <td className="px-4 py-3">{asset.priceUsd === null ? m.dashboard.overview.noPrice : maskUsd(asset.priceUsd)}</td>
+                      <td className="px-4 py-3">
+                        {asset.priceUsd === null ? (
+                          m.dashboard.overview.noPrice
+                        ) : (
+                          <div>
+                            <div>{maskUsd(asset.priceUsd)}</div>
+                            <div className="text-xs text-slate-500 dark:text-slate-400">
+                              {formatPriceMeta(asset.priceSource, asset.priceConfidence)}
+                            </div>
+                          </div>
+                        )}
+                      </td>
                       <td className="px-4 py-3">{maskUsd(asset.valueUsd)}</td>
                       <td className="px-4 py-3">{maskUsd(asset.costBasisUsd)}</td>
                       <td className="px-4 py-3">{maskUsd(asset.unrealizedPnlUsd)}</td>
@@ -621,9 +832,10 @@ export function DashboardClient() {
                         <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{maskNumber(tx.amount)}</td>
                         <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
                           {maskUsdPrecise(tx.unitPriceUsd)}
-                          {tx.valueSource === "spot" && tx.amount > 0 && (
-                            <span className="ml-1 text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500">{m.dashboard.transactions.estimated}</span>
-                          )}
+                          <div className="text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                            {tx.valueSource === "spot" && tx.amount > 0 ? `${m.dashboard.transactions.estimated} · ` : ""}
+                            {formatPriceMeta(tx.unitPriceSource, tx.unitPriceConfidence)}
+                          </div>
                         </td>
                         <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{maskUsd(tx.valueUsd)}</td>
                         <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
@@ -945,7 +1157,14 @@ function formatTransactionTime(unixTs: number, unknownLabel: string): string {
   return new Date(unixTs * 1000).toLocaleString();
 }
 
-function filterHistoryByRange(points: HistoryResponse["history"], range: HistoryRange) {
+function formatPriceMeta(source?: PriceSource, confidence?: PriceConfidence) {
+  const normalizedSource = source ?? "missing";
+  const normalizedConfidence = confidence ?? "low";
+  const confidenceLabel = normalizedConfidence === "high" ? "H" : normalizedConfidence === "medium" ? "M" : "L";
+  return `${normalizedSource} · ${confidenceLabel}`;
+}
+
+function filterHistoryByRange(points: Array<{ ts: string; valueUsd: number }>, range: HistoryRange) {
   if (range === "max" || points.length === 0) {
     return points;
   }
@@ -986,7 +1205,7 @@ function PortfolioHistoryChart({
   unknownLabel,
   noDataLabel
 }: {
-  points: HistoryResponse["history"];
+  points: Array<{ ts: string; valueUsd: number }>;
   privacyMode: boolean;
   unknownLabel: string;
   noDataLabel: string;

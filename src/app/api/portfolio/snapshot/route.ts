@@ -57,6 +57,8 @@ export async function GET(request: Request) {
             valueUsd: number | null;
           }> | null;
           priceUsd?: number | null;
+          priceSource?: "configured" | "coingecko" | "defillama" | "cache" | "missing";
+          priceConfidence?: "high" | "medium" | "low";
           costBasisUsd?: number | null;
           realizedPnlUsd?: number | null;
           unrealizedPnlUsd?: number | null;
@@ -66,6 +68,8 @@ export async function GET(request: Request) {
           assetKey?: string;
           amount?: number | null;
           valueUsd?: number | null;
+          unitPriceSource?: "configured" | "coingecko" | "defillama" | "cache" | "missing";
+          unitPriceConfidence?: "high" | "medium" | "low";
         }>;
       }
     | null
@@ -105,6 +109,13 @@ export async function GET(request: Request) {
     }
     return tx.valueUsd === null || !Number.isFinite(tx.valueUsd);
   });
+  const hasMissingPriceMeta = (data?.assets ?? []).some((asset) => {
+    const priceUsd = asset.priceUsd;
+    if (priceUsd === null || !Number.isFinite(priceUsd)) {
+      return false;
+    }
+    return !asset.priceSource || !asset.priceConfidence;
+  });
   const needsRecompute =
     !data ||
     !Array.isArray(data.transactions) ||
@@ -113,7 +124,8 @@ export async function GET(request: Request) {
     hasInvalidAssets ||
     hasInvalidTxTimestamps ||
     hasMissingWalletBreakdown ||
-    hasMissingPricedTxValues;
+    hasMissingPricedTxValues ||
+    hasMissingPriceMeta;
   if (needsRecompute) {
     const wallets = await prisma.linkedWallet.findMany({
       where: {

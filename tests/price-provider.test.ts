@@ -77,4 +77,22 @@ describe("price provider resilience", () => {
     expect(prices.ALGO).toBe(0.15);
     expect(prices["31566704"]).toBe(1);
   });
+
+  it("returns price source/confidence metadata for spot quotes", async () => {
+    process.env.PRICE_API_URL = "https://invalid-price-endpoint.example/prices";
+    process.env.DEFI_LLAMA_PRICE_API_URL = "https://coins.llama.fi/prices/current";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(makeResponse({}, false))
+      .mockResolvedValueOnce(makeResponse({}, false))
+      .mockResolvedValueOnce(makeResponse({ coins: { "coingecko:algorand": { price: 0.2 } } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { getSpotPriceQuotes } = await import("@/lib/price/provider");
+    const quotes = await getSpotPriceQuotes([null]);
+
+    expect(quotes.ALGO.usd).toBe(0.2);
+    expect(quotes.ALGO.source).toBe("defillama");
+    expect(quotes.ALGO.confidence).toBe("medium");
+  });
 });

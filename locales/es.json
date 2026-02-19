@@ -53,6 +53,15 @@
     "errors": {
       "refreshFailed": "La actualización falló."
     },
+    "scope": {
+      "label": "Alcance",
+      "allWallets": "Todas las wallets",
+      "saveCurrent": "Guardar alcance como bundle",
+      "delete": "Eliminar bundle",
+      "createPrompt": "Nombre del bundle",
+      "deleteConfirm": "¿Eliminar bundle {name}?",
+      "walletsInScope": "{count} wallets en alcance"
+    },
     "overview": {
       "hideZero": "Ocultar tokens con balance 0",
       "heldByWallets": "Distribucion por wallet",

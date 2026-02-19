@@ -184,6 +184,9 @@ describe("computePortfolioSnapshot", () => {
       getSpotPricesFn: async () => ({
         ALGO: 0.1
       }),
+      getSpotQuotesFn: async () => ({
+        ALGO: { usd: 0.1, source: "configured", confidence: "high", asOf: Date.now() }
+      }),
       getHistoricalPricesFn: async () => ({
         "ALGO:14-11-2023": null
       }),
@@ -221,6 +224,9 @@ describe("computePortfolioSnapshot", () => {
       getAccountStateFn,
       getTransactionsFn,
       getSpotPricesFn: async () => ({ ALGO: 0.1 }),
+      getSpotQuotesFn: async () => ({
+        ALGO: { usd: 0.1, source: "configured", confidence: "high", asOf: Date.now() }
+      }),
       getHistoricalPricesFn,
       getDefiPositionsFn: async () => []
     });
@@ -229,6 +235,9 @@ describe("computePortfolioSnapshot", () => {
       getAccountStateFn,
       getTransactionsFn,
       getSpotPricesFn: async () => ({ ALGO: 0.5 }),
+      getSpotQuotesFn: async () => ({
+        ALGO: { usd: 0.5, source: "configured", confidence: "high", asOf: Date.now() }
+      }),
       getHistoricalPricesFn,
       getDefiPositionsFn: async () => []
     });

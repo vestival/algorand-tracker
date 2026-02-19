@@ -53,6 +53,15 @@
     "errors": {
       "refreshFailed": "Refresh failed."
     },
+    "scope": {
+      "label": "Scope",
+      "allWallets": "All wallets",
+      "saveCurrent": "Save current as bundle",
+      "delete": "Delete bundle",
+      "createPrompt": "Bundle name",
+      "deleteConfirm": "Delete bundle {name}?",
+      "walletsInScope": "{count} wallets in scope"
+    },
     "overview": {
       "hideZero": "Hide 0 balance tokens",
       "heldByWallets": "Held by wallets",

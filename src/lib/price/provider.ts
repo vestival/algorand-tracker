@@ -25,6 +25,14 @@ type SpotPriceCacheEntry = {
   usd: number;
   asOf: number;
 };
+export type SpotPriceSource = "configured" | "coingecko" | "defillama" | "cache" | "missing";
+export type SpotPriceConfidence = "high" | "medium" | "low";
+export type SpotPriceQuote = {
+  usd: number | null;
+  source: SpotPriceSource;
+  confidence: SpotPriceConfidence;
+  asOf: number | null;
+};
 
 function parseAsaMap(): Record<number, string> {
   const map: Record<number, string> = { ...DEFAULT_ASA_CG_MAP };
@@ -134,7 +142,21 @@ async function fetchDefiLlamaPriceMap(endpoint: string, coinIds: string[]): Prom
   }
 }
 
-export async function getSpotPricesUsd(assetIds: Array<number | null>): Promise<Record<string, number | null>> {
+function confidenceFromSource(source: SpotPriceSource): SpotPriceConfidence {
+  if (source === "configured" || source === "coingecko") return "high";
+  if (source === "defillama") return "medium";
+  return "low";
+}
+
+function sourceFromCoinIdEndpoint(coinId: string, endpoint: string): SpotPriceSource {
+  if (endpoint === env.PRICE_API_URL) return "configured";
+  if (endpoint === DEFAULT_CG_SIMPLE_PRICE_URL) return "coingecko";
+  if (endpoint === env.DEFI_LLAMA_PRICE_API_URL || endpoint === DEFAULT_LLAMA_PRICE_URL) return "defillama";
+  const cache = spotCache.get(coinId);
+  return cache ? "cache" : "missing";
+}
+
+export async function getSpotPriceQuotes(assetIds: Array<number | null>): Promise<Record<string, SpotPriceQuote>> {
   const unique = Array.from(new Set(assetIds.map((id) => (id === null ? "ALGO" : String(id)))));
 
   const idsToQuery = new Set<string>();
@@ -152,12 +174,16 @@ export async function getSpotPricesUsd(assetIds: Array<number | null>): Promise<
 
   const requestedCoinIds = Array.from(idsToQuery);
   let prices: PriceMap = {};
+  const sourceByCoinId: Record<string, SpotPriceSource> = {};
   if (idsToQuery.size > 0) {
     const endpoints = Array.from(new Set([env.PRICE_API_URL, DEFAULT_CG_SIMPLE_PRICE_URL]));
 
     for (const endpoint of endpoints) {
       const fetched = await fetchSpotPriceMap(endpoint, requestedCoinIds);
       if (Object.keys(fetched).length > 0) {
+        for (const coinId of Object.keys(fetched)) {
+          sourceByCoinId[coinId] = sourceFromCoinIdEndpoint(coinId, endpoint);
+        }
         prices = {
           ...prices,
           ...fetched
@@ -175,6 +201,9 @@ export async function getSpotPricesUsd(assetIds: Array<number | null>): Promise<
       for (const endpoint of llamaEndpoints) {
         const fetched = await fetchDefiLlamaPriceMap(endpoint, missingAfterCg);
         if (Object.keys(fetched).length > 0) {
+          for (const coinId of Object.keys(fetched)) {
+            sourceByCoinId[coinId] = sourceFromCoinIdEndpoint(coinId, endpoint);
+          }
           prices = {
             ...prices,
             ...fetched
@@ -197,20 +226,51 @@ export async function getSpotPricesUsd(assetIds: Array<number | null>): Promise<
     }
   }
 
-  const out: Record<string, number | null> = {};
+  const out: Record<string, SpotPriceQuote> = {};
 
   for (const key of unique) {
     if (key === "ALGO") {
-      out[key] = prices[ALGO_CG_ID]?.usd ?? spotCache.get(ALGO_CG_ID)?.usd ?? null;
+      const direct = prices[ALGO_CG_ID]?.usd;
+      const cache = spotCache.get(ALGO_CG_ID);
+      const source = direct !== undefined ? (sourceByCoinId[ALGO_CG_ID] ?? "missing") : cache ? "cache" : "missing";
+      const usd = direct ?? cache?.usd ?? null;
+      out[key] = {
+        usd,
+        source,
+        confidence: confidenceFromSource(source),
+        asOf: direct !== undefined ? Date.now() : cache?.asOf ?? null
+      };
       continue;
     }
 
     const asaId = Number(key);
     const cgId = asaMap[asaId];
-    out[key] = cgId ? prices[cgId]?.usd ?? spotCache.get(cgId)?.usd ?? null : null;
+    if (!cgId) {
+      out[key] = {
+        usd: null,
+        source: "missing",
+        confidence: "low",
+        asOf: null
+      };
+      continue;
+    }
+    const direct = prices[cgId]?.usd;
+    const cache = spotCache.get(cgId);
+    const source = direct !== undefined ? (sourceByCoinId[cgId] ?? "missing") : cache ? "cache" : "missing";
+    out[key] = {
+      usd: direct ?? cache?.usd ?? null,
+      source,
+      confidence: confidenceFromSource(source),
+      asOf: direct !== undefined ? Date.now() : cache?.asOf ?? null
+    };
   }
 
   return out;
+}
+
+export async function getSpotPricesUsd(assetIds: Array<number | null>): Promise<Record<string, number | null>> {
+  const quotes = await getSpotPriceQuotes(assetIds);
+  return Object.fromEntries(Object.entries(quotes).map(([assetKey, quote]) => [assetKey, quote.usd]));
 }
 
 export async function getHistoricalPricesUsdByDay(

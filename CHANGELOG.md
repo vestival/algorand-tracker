@@ -5,6 +5,8 @@ All notable changes to Strategos are documented in this file.
 ## [Unreleased]
 
 ### Added
+- Wallet bundles (saved local scopes) in dashboard to analyze portfolio, transactions, DeFi rows, and historical chart by selected wallet groups without changing linked-wallet data (2026-02-19 14:58 MST)
+- Price provenance metadata across assets/transactions (`source` + confidence), surfaced in UI for transparency on CoinGecko/DefiLlama/cache fallbacks (2026-02-19 14:58 MST)
 - Vercel Web Analytics integration via `@vercel/analytics` and global `<Analytics />` in app layout for production traffic/page-view observability (2026-02-19 14:45 MST)
 - Daily automatic portfolio recompute endpoint for Vercel Cron (`/api/cron/daily-refresh`) secured with `CRON_SECRET`, intended to run at `00:00 UTC` (`vercel.json`) (2026-02-19 11:13 MST)
 - Strategos brand system documentation with identity standards, tone, typography, and color tokens in `docs/BRANDING.md` (2026-02-18 06:27 MST)
@@ -38,6 +40,7 @@ All notable changes to Strategos are documented in this file.
 - Unit test coverage for wallet deletion ownership/404 rules via a dedicated deletion service (`tests/wallet-delete.test.ts`) (2026-02-17 04:46 MST)
 
 ### Changed
+- Overview portfolio history chart now uses transaction replay scoped to the selected wallet set (aggregate of wallet-level series), improving consistency with visible transaction data (2026-02-19 14:58 MST)
 - Rebranded application identity from prior naming to **Strategos** across metadata, package naming, and documentation titles (2026-02-18 06:27 MST)
 - Updated metadata canonical/Open Graph base URL handling using `NEXT_PUBLIC_BASE_URL` (default `https://strategos.vestival.es`) for custom-domain readiness on Vercel (2026-02-18 06:27 MST)
 - Updated typography and visual system to institutional dark-first defaults: Cinzel for brand headings and Inter for UI text (2026-02-18 06:27 MST)

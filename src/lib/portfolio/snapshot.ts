@@ -4,7 +4,15 @@ import { getAllDefiPositions } from "@/lib/defi";
 import type { DefiPosition } from "@/lib/defi/types";
 import { runFifo } from "@/lib/portfolio/lots";
 import { parseTransactionsToLotEvents } from "@/lib/portfolio/parser";
-import { getHistoricalPriceKey, getHistoricalPricesUsdByDay, getSpotPricesUsd } from "@/lib/price/provider";
+import {
+  getHistoricalPriceKey,
+  getHistoricalPricesUsdByDay,
+  getSpotPriceQuotes,
+  getSpotPricesUsd,
+  type SpotPriceConfidence,
+  type SpotPriceQuote,
+  type SpotPriceSource
+} from "@/lib/price/provider";
 
 export type SnapshotAssetRow = {
   assetKey: string;
@@ -16,6 +24,8 @@ export type SnapshotAssetRow = {
     valueUsd: number | null;
   }>;
   priceUsd: number | null;
+  priceSource: SpotPriceSource;
+  priceConfidence: SpotPriceConfidence;
   valueUsd: number | null;
   costBasisUsd: number;
   realizedPnlUsd: number;
@@ -42,6 +52,8 @@ export type SnapshotTransactionRow = {
   assetName: string;
   amount: number;
   unitPriceUsd: number | null;
+  unitPriceSource: SpotPriceSource;
+  unitPriceConfidence: SpotPriceConfidence;
   valueUsd: number | null;
   valueSource: "historical" | "spot" | "missing";
   feeAlgo: number;
@@ -73,6 +85,7 @@ export type SnapshotDeps = {
   getAccountStateFn?: (address: string) => Promise<AccountState>;
   getTransactionsFn?: (address: string) => Promise<IndexerTxn[]>;
   getSpotPricesFn?: (assetIds: Array<number | null>) => Promise<Record<string, number | null>>;
+  getSpotQuotesFn?: (assetIds: Array<number | null>) => Promise<Record<string, SpotPriceQuote>>;
   getHistoricalPricesFn?: (assetKeys: string[], unixTimestamps: number[]) => Promise<Record<string, number | null>>;
   getDefiPositionsFn?: (wallets: string[]) => Promise<DefiPosition[]>;
 };
@@ -85,6 +98,7 @@ export async function computePortfolioSnapshot(wallets: string[], deps: Snapshot
   const getAccountStateFn = deps.getAccountStateFn ?? getAccountState;
   const getTransactionsFn = deps.getTransactionsFn ?? getTransactionsForAddress;
   const getSpotPricesFn = deps.getSpotPricesFn ?? getSpotPricesUsd;
+  const getSpotQuotesFn = deps.getSpotQuotesFn ?? getSpotPriceQuotes;
   const getHistoricalPricesFn = deps.getHistoricalPricesFn ?? getHistoricalPricesUsdByDay;
   const getDefiPositionsFn = deps.getDefiPositionsFn ?? getAllDefiPositions;
 
@@ -123,7 +137,11 @@ export async function computePortfolioSnapshot(wallets: string[], deps: Snapshot
   }
 
   const assetIds: Array<number | null> = [null, ...Object.keys(decimalsByAsset).map((k) => Number(k))];
-  const pricesUsd = await getSpotPricesFn(assetIds);
+  const spotQuotes = await getSpotQuotesFn(assetIds);
+  const fallbackPricesUsd = await getSpotPricesFn(assetIds);
+  const pricesUsd = Object.fromEntries(
+    Object.keys(spotQuotes).map((assetKey) => [assetKey, spotQuotes[assetKey]?.usd ?? fallbackPricesUsd[assetKey] ?? null])
+  );
   const assetKeysForHistory = ["ALGO", ...Object.keys(decimalsByAsset)];
   const txTimestamps = txns.map((txn) => txn.confirmedRoundTime);
   const historicalPrices = await getHistoricalPricesFn(assetKeysForHistory, txTimestamps);
@@ -131,16 +149,27 @@ export async function computePortfolioSnapshot(wallets: string[], deps: Snapshot
   const getPriceQuote = (
     assetKey: string,
     unixTs: number
-  ): { unitPriceUsd: number | null; source: "historical" | "spot" | "missing" } => {
+  ): {
+    unitPriceUsd: number | null;
+    source: "historical" | "spot" | "missing";
+    spotSource: SpotPriceSource;
+    confidence: SpotPriceConfidence;
+  } => {
     const fromHistory = historicalPrices[getHistoricalPriceKey(assetKey, unixTs)];
     if (fromHistory !== undefined && fromHistory !== null && Number.isFinite(fromHistory)) {
-      return { unitPriceUsd: fromHistory, source: "historical" };
+      return { unitPriceUsd: fromHistory, source: "historical", spotSource: "coingecko", confidence: "high" };
     }
-    const spot = pricesUsd[assetKey] ?? null;
+    const quote = spotQuotes[assetKey];
+    const spot = quote?.usd ?? pricesUsd[assetKey] ?? null;
     if (spot !== null && Number.isFinite(spot)) {
-      return { unitPriceUsd: spot, source: "spot" };
+      return {
+        unitPriceUsd: spot,
+        source: "spot",
+        spotSource: quote?.source ?? "cache",
+        confidence: quote?.confidence ?? "low"
+      };
     }
-    return { unitPriceUsd: null, source: "missing" };
+    return { unitPriceUsd: null, source: "missing", spotSource: "missing", confidence: "low" };
   };
   const getHistoricalUnitPriceUsd = (assetKey: string, unixTs: number): number | null => {
     const fromHistory = historicalPrices[getHistoricalPriceKey(assetKey, unixTs)];
@@ -172,6 +201,12 @@ export async function computePortfolioSnapshot(wallets: string[], deps: Snapshot
     assetNameByKey[assetKey] = assetName;
 
     const price = pricesUsd[assetKey] ?? null;
+    const priceQuote = spotQuotes[assetKey] ?? {
+      usd: price,
+      source: price === null ? "missing" : "cache",
+      confidence: price === null ? "low" : "medium",
+      asOf: null
+    };
     const valueUsd = price === null ? null : balance * price;
     const walletBreakdown = Array.from(balancesByWalletByAsset.get(assetKey)?.entries() ?? [])
       .filter(([, walletBalance]) => walletBalance > 0)
@@ -203,6 +238,8 @@ export async function computePortfolioSnapshot(wallets: string[], deps: Snapshot
       balance,
       walletBreakdown,
       priceUsd: price,
+      priceSource: priceQuote.source,
+      priceConfidence: priceQuote.confidence,
       valueUsd,
       costBasisUsd,
       realizedPnlUsd,
@@ -243,6 +280,8 @@ export async function computePortfolioSnapshot(wallets: string[], deps: Snapshot
         assetName: assetNameByKey.ALGO,
         amount,
         unitPriceUsd,
+        unitPriceSource: quote.source === "historical" ? "coingecko" : quote.spotSource,
+        unitPriceConfidence: quote.source === "historical" ? "high" : quote.confidence,
         valueUsd,
         valueSource: amount === 0 ? "spot" : quote.source,
         feeAlgo,
@@ -284,6 +323,8 @@ export async function computePortfolioSnapshot(wallets: string[], deps: Snapshot
         assetName: assetNameByKey[key],
         amount: qty,
         unitPriceUsd,
+        unitPriceSource: quote.source === "historical" ? "coingecko" : quote.spotSource,
+        unitPriceConfidence: quote.source === "historical" ? "high" : quote.confidence,
         valueUsd,
         valueSource: qty === 0 ? "spot" : quote.source,
         feeAlgo,
@@ -370,10 +411,15 @@ export async function computePortfolioSnapshot(wallets: string[], deps: Snapshot
   const defiPositions = await getDefiPositionsFn(wallets);
 
   const estimatedAprPct = defiPositions.length > 0 ? 4.2 : null;
+  const quoteAsOf = Object.values(spotQuotes)
+    .map((quote) => quote?.asOf ?? null)
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0)
+    .sort((a, b) => b - a)[0];
+  const nowIso = new Date().toISOString();
 
   return {
-    computedAt: new Date().toISOString(),
-    priceAsOf: new Date().toISOString(),
+    computedAt: nowIso,
+    priceAsOf: quoteAsOf ? new Date(quoteAsOf).toISOString() : nowIso,
     method: "FIFO",
     totals,
     assets,
