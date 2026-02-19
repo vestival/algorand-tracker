@@ -205,34 +205,30 @@ export async function getTransactionsForAddress(address: string, limit = env.IND
   const cappedLimit = Math.max(1, limit);
   const encodedAddress = encodeURIComponent(address);
 
-  async function fetchForType(txType: "pay" | "axfer"): Promise<IndexerTxn[]> {
-    const collected: IndexerTxn[] = [];
-    let nextToken: string | undefined;
+  const collected: IndexerTxn[] = [];
+  let nextToken: string | undefined;
 
-    while (collected.length < cappedLimit) {
-      const remaining = cappedLimit - collected.length;
-      const pageLimit = Math.min(remaining, 1000);
-      const nextPart = nextToken ? `&next=${encodeURIComponent(nextToken)}` : "";
-      const path = `/v2/transactions?address=${encodedAddress}&tx-type=${txType}&limit=${pageLimit}${nextPart}`;
-      const data = await indexerFetch<IndexerTxnResponse>(path);
+  while (collected.length < cappedLimit) {
+    const remaining = cappedLimit - collected.length;
+    const pageLimit = Math.min(remaining, 1000);
+    const nextPart = nextToken ? `&next=${encodeURIComponent(nextToken)}` : "";
+    // Intentionally fetch all transaction types. App-call roots can carry inner pay/axfer
+    // transfers that are required for accurate cost basis and portfolio history.
+    const path = `/v2/transactions?address=${encodedAddress}&limit=${pageLimit}${nextPart}`;
+    const data = await indexerFetch<IndexerTxnResponse>(path);
+    const mapped = (data.transactions ?? []).flatMap((txn) =>
+      flattenRawTxn(txn as RawTxn & { id: string; sender: string })
+    );
+    collected.push(...mapped);
 
-      const mapped = (data.transactions ?? []).flatMap((txn) =>
-        flattenRawTxn(txn as RawTxn & { id: string; sender: string })
-      );
-      collected.push(...mapped);
-
-      if (!data["next-token"] || data.transactions.length === 0) {
-        break;
-      }
-      nextToken = data["next-token"];
+    if (!data["next-token"] || data.transactions.length === 0) {
+      break;
     }
-
-    return collected;
+    nextToken = data["next-token"];
   }
 
-  const [payments, assetTransfers] = await Promise.all([fetchForType("pay"), fetchForType("axfer")]);
   const deduped = new Map<string, IndexerTxn>();
-  for (const txn of [...payments, ...assetTransfers]) {
+  for (const txn of collected) {
     deduped.set(txn.id, txn);
   }
 

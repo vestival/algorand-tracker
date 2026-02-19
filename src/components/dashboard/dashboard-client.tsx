@@ -957,7 +957,13 @@ function filterHistoryByRange(points: HistoryResponse["history"], range: History
   }
   const start = end - days * 24 * 60 * 60 * 1000;
   const filtered = points.filter((point) => Date.parse(point.ts) >= start);
-  return filtered.length > 1 ? filtered : points.slice(-Math.min(points.length, 2));
+  if (filtered.length >= 2) {
+    return filtered;
+  }
+  if (filtered.length === 1) {
+    return [filtered[0], { ...filtered[0] }];
+  }
+  return points.slice(-Math.min(points.length, 2));
 }
 
 function filterSeriesByRange(series: WalletSeries[], range: HistoryRange): WalletSeries[] {

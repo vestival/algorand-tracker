@@ -46,6 +46,9 @@ All notable changes to Strategos are documented in this file.
 - Corrected per-wallet FIFO attribution to include inbound acquisition lots (receiver-side events), fixing wallet-level cost basis/PnL accuracy (2026-02-17 04:36 MST)
 
 ### Fixed
+- Cost basis and transaction completeness fix: Indexer ingestion now fetches all transaction types (not only `pay`/`axfer`) so app-call transactions with inner transfers are included; this restores missing DeFi swap legs (for example TALGO receives) that were causing `cost basis = 0` and distorted PnL/history (`src/lib/algorand/indexer.ts`) (2026-02-19 07:35 MST)
+- Added regression test to ensure inner asset transfers from app-call roots are ingested and available for portfolio accounting (`tests/indexer.test.ts`) (2026-02-19 07:35 MST)
+- History range filter no longer backfills with unrelated older points when only one point exists in the selected range, reducing misleading range-change jumps (`src/components/dashboard/dashboard-client.tsx`) (2026-02-19 07:35 MST)
 - Fixed portfolio history asset-state mapping bug in `/api/portfolio/history`: snapshot `assets` were incorrectly read as `assetId` (non-existent) instead of `assetKey`, which collapsed holdings into ALGO and produced false chart deltas; now mapped correctly by `assetKey` (`src/app/api/portfolio/history/route.ts`) (2026-02-18 20:25 MST)
 - Added mapping utility + regression test to ensure latest snapshot asset keys are preserved for historical replay (`src/lib/portfolio/history-mapper.ts`, `tests/history-mapper.test.ts`) (2026-02-18 20:25 MST)
 - Portfolio history no longer collapses to one point per day; it now preserves point resolution per timestamp so trend changes reflect actual event timing (`src/lib/portfolio/history.ts`) (2026-02-18 20:17 MST)
