@@ -128,11 +128,14 @@ export function buildPortfolioHistoryFromTransactions({
       txsByDayDescending.set(dayKey, bucket);
     }
 
+    const todayDayKeyUtc = toUtcDayKeyFromDate(new Date());
     for (const dayKey of [...dayKeys].reverse()) {
-      const dayEnd = toUtcDayEndIso(dayKey);
-      const value = dayKey === latestDayKey && finite(latestValueUsd) ? latestValueUsd : computeValue(dayKey);
+      const isLatestDay = dayKey === latestDayKey;
+      const isTodayUtc = dayKey === todayDayKeyUtc;
+      const pointTs = isLatestDay && isTodayUtc ? new Date(parsedLatestTs).toISOString() : toUtcDayEndIso(dayKey);
+      const value = isLatestDay && finite(latestValueUsd) ? latestValueUsd : computeValue(dayKey);
       points.push({
-        ts: dayEnd,
+        ts: pointTs,
         valueUsd: value
       });
 

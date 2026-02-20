@@ -58,6 +58,7 @@ All notable changes to Strategos are documented in this file.
 - Corrected per-wallet FIFO attribution to include inbound acquisition lots (receiver-side events), fixing wallet-level cost basis/PnL accuracy (2026-02-17 04:36 MST)
 
 ### Fixed
+- Portfolio history now enforces strict daily points for range views (7D/30D/90D use last N daily points), and for current UTC day it uses latest refresh timestamp/value instead of forced EOD close (2026-02-19 18:36 MST)
 - Dashboard tab navigation now syncs query params with active tab (`router.replace`): switching away from Settings clears stale `?tab=settings`, and deep-link tabs remain supported (`transactions`, `defi`, `wallet-analytics`, `settings`) (2026-02-19 18:19 MST)
 - Historical chart pricing input is now fetched per-coin using CoinGecko `market_chart/range` (with per-day fallback) instead of many per-day requests, reducing missing-day plateaus/flatlines caused by partial historical fetch failures (2026-02-19 17:01 MST)
 - `/api/portfolio/history` now supports wallet scoping (`?wallet=` params) and computes latest value/asset balances for the selected wallets only, preventing mismatches between selected scope and displayed history (2026-02-19 16:33 MST)

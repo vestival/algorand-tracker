@@ -142,4 +142,38 @@ describe("buildPortfolioHistoryFromTransactions", () => {
     expect(history.length).toBeGreaterThanOrEqual(2);
     expect(history.every((point) => point.ts.endsWith("T23:59:59.999Z"))).toBe(true);
   });
+
+  it("uses latest snapshot timestamp for today's point in anchored history", () => {
+    const now = new Date();
+    const latestTs = new Date(
+      Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate(),
+        12,
+        34,
+        56,
+        0
+      )
+    ).toISOString();
+
+    const history = buildPortfolioHistoryFromTransactions({
+      transactions: [
+        {
+          ts: Math.floor(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1, 10, 0, 0) / 1000),
+          assetKey: "ALGO",
+          amount: 10,
+          direction: "in",
+          unitPriceUsd: 0.1,
+          feeAlgo: 0
+        }
+      ],
+      latestValueUsd: 1.23,
+      latestTs,
+      latestAssetStates: [{ assetKey: "ALGO", balance: 10, priceUsd: 0.123 }]
+    });
+
+    expect(history.length).toBeGreaterThanOrEqual(2);
+    expect(history[history.length - 1]?.ts).toBe(latestTs);
+  });
 });

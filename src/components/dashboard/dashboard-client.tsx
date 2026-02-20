@@ -1097,19 +1097,7 @@ function filterHistoryByRange(points: Array<{ ts: string; valueUsd: number }>, r
   }
 
   const days = range === "7d" ? 7 : range === "30d" ? 30 : 90;
-  const end = Date.parse(points[points.length - 1]?.ts ?? "");
-  if (!Number.isFinite(end)) {
-    return points;
-  }
-  const start = end - days * 24 * 60 * 60 * 1000;
-  const filtered = points.filter((point) => Date.parse(point.ts) >= start);
-  if (filtered.length >= 2) {
-    return filtered;
-  }
-  if (filtered.length === 1) {
-    return [filtered[0], { ...filtered[0] }];
-  }
-  return points.slice(-Math.min(points.length, 2));
+  return points.slice(-Math.min(points.length, days));
 }
 
 function filterSeriesByRange(series: WalletSeries[], range: HistoryRange): WalletSeries[] {
