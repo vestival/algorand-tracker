@@ -16,6 +16,8 @@ All notable changes to Strategos are documented in this file.
   - `improvement.md`
   - template config in `.github/ISSUE_TEMPLATE/config.yml` (2026-02-20 06:38 MST)
 - `CONTRIBUTING.md` with enforced engineering workflow (issue-first, tests/build, changelog, production deploy, close issue) and label conventions (`bug`/`feature`/`improvement`) (2026-02-20 06:38 MST)
+- DeFi holdings inference for known Algorand liquid-staking assets (`xALGO`, `gALGO`, `tALGO`) so DeFi rows appear even when app-local-state-only detection is incomplete (`src/lib/defi/inferred.ts`, `src/lib/defi/index.ts`) (2026-02-20 06:53 MST)
+- Regression tests for holdings-based DeFi inference (`tests/defi-inferred.test.ts`) (2026-02-20 06:53 MST)
 
 ## [0.2.0] - 2026-02-20
 
