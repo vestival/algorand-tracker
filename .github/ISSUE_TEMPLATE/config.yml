@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security report
+    url: mailto:security@strategos.app
+    about: Please report security vulnerabilities privately.
+  - name: General questions
+    url: https://github.com/vestival/strategos/discussions
+    about: Use Discussions for open-ended questions.

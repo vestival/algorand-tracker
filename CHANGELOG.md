@@ -9,6 +9,14 @@ All notable changes to Strategos are documented in this file.
 - Stabilized portfolio history reconstruction by preferring snapshot-persisted daily prices in `/api/portfolio/history` before any live fallback fetch, reducing day-to-day drift on unchanged data (`src/lib/portfolio/snapshot.ts`, `src/app/api/portfolio/history/route.ts`) (2026-02-20 06:20 MST)
 - Added regression coverage for historical fallback persistence and snapshot daily-price persistence to protect cost-basis/history stability (`tests/snapshot.test.ts`) (2026-02-20 06:20 MST)
 
+### Added
+- GitHub issue templates for standardized reporting/planning:
+  - `bug_report.md`
+  - `feature_request.md`
+  - `improvement.md`
+  - template config in `.github/ISSUE_TEMPLATE/config.yml` (2026-02-20 06:38 MST)
+- `CONTRIBUTING.md` with enforced engineering workflow (issue-first, tests/build, changelog, production deploy, close issue) and label conventions (`bug`/`feature`/`improvement`) (2026-02-20 06:38 MST)
+
 ## [0.2.0] - 2026-02-20
 
 ### Added
