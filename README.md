@@ -206,9 +206,9 @@ The release script:
 2. Ensure Google OAuth redirect URI:
    - `https://<your-domain>/api/auth/callback/google`
 3. Add custom domain in Vercel:
-   - Project -> Settings -> Domains -> add `strategos.vestival.es`
+   - Project -> Settings -> Domains -> add `<your-domain>`
 4. Set canonical base URL:
-   - `NEXT_PUBLIC_BASE_URL=https://strategos.vestival.es`
+   - `NEXT_PUBLIC_BASE_URL=https://<your-domain>`
 5. Deploy:
 
 ```bash

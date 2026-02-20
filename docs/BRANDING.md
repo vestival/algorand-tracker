@@ -45,7 +45,7 @@ Last updated: 2026-02-18
 
 ## Domain & Canonical
 
-- Production base URL: `https://strategos.vestival.es`
+- Production base URL: `https://<your-domain>`
 - Canonical and Open Graph URLs derive from `NEXT_PUBLIC_BASE_URL`.
 - No hardcoded `vercel.app` domain should be present in app metadata.
 

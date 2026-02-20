@@ -14,7 +14,7 @@ Add these in Vercel: Project -> Settings -> Environment Variables
   - Example: `postgresql://USER:PASSWORD@HOST:5432/DB?sslmode=require`
 - `NEXTAUTH_URL`
   - Your stable production URL.
-  - Example: `https://strategos.vestival.es`
+  - Example: `https://<your-domain>`
 - `NEXTAUTH_SECRET`
   - 32+ random chars.
   - Generate: `openssl rand -base64 32`
@@ -52,9 +52,9 @@ Add these in Vercel: Project -> Settings -> Environment Variables
 - `INDEXER_TX_LIMIT`
   - Example: `500`
 - `NEXT_PUBLIC_BASE_URL`
-  - Example: `https://strategos.vestival.es`
+  - Example: `https://<your-domain>`
 - `NEXT_PUBLIC_SUPPORT_EMAIL`
-  - Example: `support@strategos.vestival.es`
+  - Example: `support@<your-domain>`
 - `MANUAL_REFRESH_DAILY_MAX`
   - Example: `2` (manual refreshes per UTC day)
 - `REFRESH_EXEMPT_EMAIL`
@@ -65,14 +65,16 @@ Add these in Vercel: Project -> Settings -> Environment Variables
 ## 3) Google OAuth setup
 In Google Cloud Console -> OAuth client:
 - Authorized JavaScript origins:
-  - `https://strategos.vestival.es`
+  - `https://<your-domain>`
 - Authorized redirect URIs:
-  - `https://strategos.vestival.es/api/auth/callback/google`
+  - `https://<your-domain>/api/auth/callback/google`
 
-If you use a custom domain, replace the above with your custom domain.
+Use the exact same domain value configured in:
+- `NEXTAUTH_URL`
+- `NEXT_PUBLIC_BASE_URL`
 
 In Vercel:
-- Project -> Settings -> Domains -> add `strategos.vestival.es`
+- Project -> Settings -> Domains -> add `<your-domain>`
 - Configure DNS records at your domain provider as instructed by Vercel.
 
 ## 4) Deploy commands
