@@ -136,6 +136,7 @@
       "tokenBreakdown": "Desglose de tokens",
       "token": "Token",
       "amount": "Cantidad",
+      "algoPerToken": "ALGO/token",
       "noTokenDetails": "Aun no hay detalle por token disponible para esta posicion.",
       "unknownAsset": "Activo desconocido",
       "searchPlaceholder": "Buscar protocolo, tipo, wallet",

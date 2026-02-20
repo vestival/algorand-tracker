@@ -19,6 +19,7 @@ import {
   sumAlignedSeries,
   type WalletSeries
 } from "@/lib/portfolio/wallet-analytics";
+import { computePositionAtDepositUsd } from "@/lib/defi/metrics";
 import { formatAlgo, formatUsd, formatUsdPrecise, getAlgorandExplorerTxUrl, shortAddress } from "@/lib/utils";
 
 type PriceSource = "configured" | "coingecko" | "defillama" | "cache" | "missing";
@@ -35,6 +36,7 @@ type SnapshotResponse = {
       unrealizedPnlUsd: number;
     };
     assets: Array<{
+      assetId?: number | null;
       assetKey: string;
       assetName?: string;
       balance: number;
@@ -338,17 +340,27 @@ export function DashboardClient() {
   });
   const defaultAprPct = snapshot?.yieldEstimate.estimatedAprPct ?? 0;
   const algoSpotPriceUsd = snapshot?.assets.find((asset) => asset.assetKey === "ALGO")?.priceUsd ?? null;
+  const basisByAssetId = useMemo(() => {
+    const map = new Map<number, { assetId: number | null; balance: number; costBasisUsd: number | null }>();
+    for (const asset of snapshot?.assets ?? []) {
+      if (asset.assetId === null || asset.assetId === undefined) {
+        continue;
+      }
+      map.set(asset.assetId, {
+        assetId: asset.assetId,
+        balance: asset.balance,
+        costBasisUsd: asset.costBasisUsd
+      });
+    }
+    return map;
+  }, [snapshot?.assets]);
   const defiRows = (snapshot?.defiPositions ?? [])
     .filter((position) => scopedWalletSet.has(position.wallet))
     .map((p, index) => {
     const nowUsd = p.valueUsd ?? 0;
-    const syntheticGrowthPct = 0.12;
-    const atDepositUsd = nowUsd > 0 ? nowUsd / (1 + syntheticGrowthPct) : null;
-    const yieldUsd = atDepositUsd === null ? null : nowUsd - atDepositUsd;
-    const pnlUsd = yieldUsd;
-    const pnlPct = atDepositUsd && atDepositUsd > 0 && pnlUsd !== null ? (pnlUsd / atDepositUsd) * 100 : null;
     const aprPct = defaultAprPct;
     const dailyYieldUsd = nowUsd > 0 ? (nowUsd * (aprPct / 100)) / 365 : null;
+    const componentInputs: Array<{ assetId: number | null; amount: number }> = [];
 
     const metaRecord = p.meta && typeof p.meta === "object" ? (p.meta as Record<string, unknown>) : null;
     const metaComponents = Array.isArray(metaRecord?.components)
@@ -365,6 +377,10 @@ export function DashboardClient() {
             const label = typeof record.label === "string" && record.label ? record.label : m.dashboard.defi.unknownAsset;
             const assetId = typeof record.assetId === "number" && Number.isInteger(record.assetId) ? record.assetId : null;
             const valueUsd = typeof record.valueUsd === "number" && Number.isFinite(record.valueUsd) ? record.valueUsd : null;
+            componentInputs.push({
+              assetId,
+              amount
+            });
             return {
               key: `${assetId ?? "unknown"}-${p.wallet}-${index}-meta-${componentIndex}`,
               label,
@@ -399,6 +415,16 @@ export function DashboardClient() {
             }
           ]
         : [];
+    if (componentInputs.length === 0 && p.assetId && p.amount && p.amount > 0) {
+      componentInputs.push({
+        assetId: p.assetId,
+        amount: p.amount
+      });
+    }
+    const atDepositUsd = computePositionAtDepositUsd(componentInputs, basisByAssetId);
+    const yieldUsd = atDepositUsd === null || p.valueUsd === null || p.valueUsd === undefined ? null : p.valueUsd - atDepositUsd;
+    const pnlUsd = yieldUsd;
+    const pnlPct = atDepositUsd && atDepositUsd > 0 && pnlUsd !== null ? (pnlUsd / atDepositUsd) * 100 : null;
     const tokenDetail = metaComponents.length > 0 ? metaComponents : inferredSingleToken;
 
     return {
@@ -966,7 +992,14 @@ export function DashboardClient() {
                                         </td>
                                         <td className="px-3 py-2 text-slate-600 dark:text-slate-300">{maskNumber(token.amount)}</td>
                                         <td className="px-3 py-2 text-slate-600 dark:text-slate-300">{maskUsd(token.valueUsd)}</td>
-                                        <td className="px-3 py-2 text-slate-600 dark:text-slate-300">{maskAlgo(token.valueAlgo)}</td>
+                                        <td className="px-3 py-2 text-slate-600 dark:text-slate-300">
+                                          <div>{maskAlgo(token.valueAlgo)}</div>
+                                          {token.valueAlgo !== null && token.amount > 0 ? (
+                                            <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                                              {(token.valueAlgo / token.amount).toFixed(6)} {m.dashboard.defi.algoPerToken}
+                                            </div>
+                                          ) : null}
+                                        </td>
                                       </tr>
                                     ))}
                                   </tbody>

@@ -5,6 +5,8 @@ All notable changes to Strategos are documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- Tinyman DeFi row metrics no longer use a synthetic `12%` at-deposit assumption; `At Deposit` is now computed from proportional cost basis of underlying tracked assets, and `Yield/PnL` are derived directly as `Now - At Deposit` for consistent portfolio math (`src/components/dashboard/dashboard-client.tsx`, `src/lib/defi/metrics.ts`, `tests/defi-metrics.test.ts`) (2026-02-20 13:18 MST)
+- Tinyman token breakdown now clarifies ALGO conversion by showing explicit per-token ratio (`ALGO/token`) under each token's ALGO-equivalent value (`src/components/dashboard/dashboard-client.tsx`, `locales/en.json`, `locales/es.json`) (2026-02-20 13:18 MST)
 - Stabilized FIFO `cost basis` against provider gaps by reusing historical prices cached in previous snapshots (`asset + UTC day`) during manual/cron recompute, preventing basis resets when a historical API response is temporarily missing (`src/lib/portfolio/price-fallback.ts`, `src/app/api/portfolio/refresh/route.ts`, `src/app/api/cron/daily-refresh/route.ts`, `src/app/api/portfolio/snapshot/route.ts`) (2026-02-20 06:20 MST)
 - Stabilized portfolio history reconstruction by preferring snapshot-persisted daily prices in `/api/portfolio/history` before any live fallback fetch, reducing day-to-day drift on unchanged data (`src/lib/portfolio/snapshot.ts`, `src/app/api/portfolio/history/route.ts`) (2026-02-20 06:20 MST)
 - Added regression coverage for historical fallback persistence and snapshot daily-price persistence to protect cost-basis/history stability (`tests/snapshot.test.ts`) (2026-02-20 06:20 MST)
