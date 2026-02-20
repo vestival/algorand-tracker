@@ -6,6 +6,7 @@ import { authOptions } from "@/lib/auth";
 import { writeAuditLog } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 import { getEnv } from "@/lib/env";
+import { extractHistoricalFallbackByDayFromSnapshot } from "@/lib/portfolio/price-fallback";
 import { computePortfolioSnapshot } from "@/lib/portfolio/snapshot";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { assertSameOrigin, getClientIp } from "@/lib/security/request";
@@ -83,7 +84,19 @@ export async function POST(request: Request) {
     }
   }
 
-  const snapshot = await computePortfolioSnapshot(walletAddresses);
+  const previousSnapshot = await prisma.portfolioSnapshot.findFirst({
+    where: { userId: session.user.id },
+    orderBy: { computedAt: "desc" },
+    select: { data: true }
+  });
+  const historicalPriceFallbackByDay = extractHistoricalFallbackByDayFromSnapshot(previousSnapshot?.data as unknown as {
+    dailyPrices?: Array<{ assetKey?: string; dayKey?: string; priceUsd?: number | null }>;
+    transactions?: Array<{ assetKey?: string; ts?: number | null; unitPriceUsd?: number | null }>;
+  });
+
+  const snapshot = await computePortfolioSnapshot(walletAddresses, {
+    historicalPriceFallbackByDay
+  });
 
   await prisma.portfolioSnapshot.create({
     data: {

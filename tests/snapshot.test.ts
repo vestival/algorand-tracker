@@ -44,6 +44,7 @@ describe("computePortfolioSnapshot", () => {
         ALGO: 2,
         "31566704": 1
       }),
+      getHistoricalPricesFn: async () => ({}),
       getDefiPositionsFn: async () => [
         {
           protocol: "Tinyman",
@@ -118,6 +119,7 @@ describe("computePortfolioSnapshot", () => {
       getSpotPricesFn: async () => ({
         ALGO: 0.1
       }),
+      getHistoricalPricesFn: async () => ({}),
       getDefiPositionsFn: async () => []
     });
 
@@ -246,6 +248,107 @@ describe("computePortfolioSnapshot", () => {
     expect(snapshotB.transactions[0]?.valueUsd).toBeCloseTo(0.5);
     expect(snapshotA.assets.find((asset) => asset.assetKey === "ALGO")?.costBasisUsd).toBeCloseTo(0);
     expect(snapshotB.assets.find((asset) => asset.assetKey === "ALGO")?.costBasisUsd).toBeCloseTo(0);
+  });
+
+  it("uses previous snapshot historical fallback so cost basis does not drift on provider gaps", async () => {
+    const txTs = 1_700_000_000; // 14-11-2023 UTC
+
+    const snapshotA = await computePortfolioSnapshot(["W1"], {
+      getAccountStateFn: async () => ({
+        address: "W1",
+        algoAmount: 1,
+        assets: [],
+        appsLocalState: []
+      }),
+      getTransactionsFn: async () => [
+        {
+          id: "tx-stable-fallback",
+          sender: "X",
+          fee: 1000,
+          confirmedRoundTime: txTs,
+          paymentTransaction: {
+            receiver: "W1",
+            amount: 1_000_000
+          }
+        }
+      ],
+      getSpotPricesFn: async () => ({ ALGO: 0.1 }),
+      getHistoricalPricesFn: async () => ({
+        "ALGO:14-11-2023": 0.2
+      }),
+      getDefiPositionsFn: async () => []
+    });
+
+    const snapshotB = await computePortfolioSnapshot(["W1"], {
+      getAccountStateFn: async () => ({
+        address: "W1",
+        algoAmount: 1,
+        assets: [],
+        appsLocalState: []
+      }),
+      getTransactionsFn: async () => [
+        {
+          id: "tx-stable-fallback",
+          sender: "X",
+          fee: 1000,
+          confirmedRoundTime: txTs,
+          paymentTransaction: {
+            receiver: "W1",
+            amount: 1_000_000
+          }
+        }
+      ],
+      getSpotPricesFn: async () => ({ ALGO: 0.5 }),
+      getHistoricalPricesFn: async () => ({
+        "ALGO:14-11-2023": null
+      }),
+      historicalPriceFallbackByDay: {
+        "ALGO:14-11-2023": 0.2
+      },
+      getDefiPositionsFn: async () => []
+    });
+
+    expect(snapshotA.assets.find((asset) => asset.assetKey === "ALGO")?.costBasisUsd).toBeCloseTo(0.2);
+    expect(snapshotB.assets.find((asset) => asset.assetKey === "ALGO")?.costBasisUsd).toBeCloseTo(0.2);
+  });
+
+  it("persists daily prices in snapshot payload for stable chart reconstruction", async () => {
+    const snapshot = await computePortfolioSnapshot(["W1"], {
+      getAccountStateFn: async () => ({
+        address: "W1",
+        algoAmount: 1,
+        assets: [],
+        appsLocalState: []
+      }),
+      getTransactionsFn: async () => [
+        {
+          id: "tx-daily-prices",
+          sender: "X",
+          fee: 1000,
+          confirmedRoundTime: 1_700_000_000,
+          paymentTransaction: {
+            receiver: "W1",
+            amount: 1_000_000
+          }
+        }
+      ],
+      getSpotPricesFn: async () => ({ ALGO: 0.1 }),
+      getHistoricalPricesFn: async (_assetKeys, timestamps) => {
+        const out: Record<string, number | null> = {};
+        for (const ts of timestamps) {
+          const d = new Date(ts * 1000);
+          const dd = String(d.getUTCDate()).padStart(2, "0");
+          const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+          const yyyy = d.getUTCFullYear();
+          out[`ALGO:${dd}-${mm}-${yyyy}`] = 0.2;
+        }
+        return out;
+      },
+      getDefiPositionsFn: async () => []
+    });
+
+    expect(snapshot.dailyPrices.length).toBeGreaterThan(0);
+    expect(snapshot.dailyPrices.some((row) => row.assetKey === "ALGO")).toBe(true);
   });
 
   it("renders zero-value for zero-amount transfers even when price is missing", async () => {

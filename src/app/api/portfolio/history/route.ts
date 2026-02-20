@@ -46,6 +46,11 @@ export async function GET(request: Request) {
           priceUsd?: number | null;
           walletBreakdown?: Array<{ wallet?: string | null; balance?: number | null }>;
         }>;
+        dailyPrices?: Array<{
+          assetKey?: string;
+          dayKey?: string;
+          priceUsd?: number | null;
+        }>;
         transactions?: Array<{
           ts?: number | null;
           wallet?: string | null;
@@ -108,22 +113,57 @@ export async function GET(request: Request) {
         .reduce((sum, wallet) => sum + (wallet.totalValueUsd ?? 0), 0)
     : (data?.totals?.valueUsd ?? null);
 
+  const scopedDailyPrices = buildScopedDailyPrices({
+    dailyPrices: data?.dailyPrices ?? [],
+    scopedAssets
+  });
+
   const history = buildPortfolioHistoryFromTransactions({
     transactions: scopedTransactions,
     latestAssetStates: mapLatestAssetStatesFromSnapshotAssets(scopedAssets),
-    dailyPrices: await buildDailyPriceRows({
-      assets: scopedAssets,
-      transactions: scopedTransactions.map((tx) => ({
-        ts: tx.ts,
-        assetKey: tx.assetKey
-      })),
-      latestTs: snapshot?.computedAt ?? null
-    }),
+    dailyPrices:
+      scopedDailyPrices.length > 0
+        ? scopedDailyPrices
+        : await buildDailyPriceRows({
+            assets: scopedAssets,
+            transactions: scopedTransactions.map((tx) => ({
+              ts: tx.ts,
+              assetKey: tx.assetKey
+            })),
+            latestTs: snapshot?.computedAt ?? null
+          }),
     latestValueUsd,
     latestTs: snapshot?.computedAt ?? null
   });
 
   return NextResponse.json({ history });
+}
+
+function buildScopedDailyPrices({
+  dailyPrices,
+  scopedAssets
+}: {
+  dailyPrices: Array<{ assetKey?: string; dayKey?: string; priceUsd?: number | null }>;
+  scopedAssets: Array<{ assetKey?: string; balance?: number | null }>;
+}): Array<{ assetKey: string; dayKey: string; priceUsd: number | null }> {
+  const scopedAssetSet = new Set(
+    scopedAssets
+      .filter((asset) => (asset.balance ?? 0) > 0)
+      .map((asset) => asset.assetKey)
+      .filter((assetKey): assetKey is string => Boolean(assetKey))
+  );
+
+  if (scopedAssetSet.size === 0) {
+    return [];
+  }
+
+  return dailyPrices
+    .filter((row) => row.assetKey && row.dayKey && scopedAssetSet.has(row.assetKey))
+    .map((row) => ({
+      assetKey: row.assetKey as string,
+      dayKey: row.dayKey as string,
+      priceUsd: typeof row.priceUsd === "number" && Number.isFinite(row.priceUsd) ? row.priceUsd : null
+    }));
 }
 
 async function buildDailyPriceRows({

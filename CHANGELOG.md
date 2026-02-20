@@ -4,6 +4,10 @@ All notable changes to Strategos are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- Stabilized FIFO `cost basis` against provider gaps by reusing historical prices cached in previous snapshots (`asset + UTC day`) during manual/cron recompute, preventing basis resets when a historical API response is temporarily missing (`src/lib/portfolio/price-fallback.ts`, `src/app/api/portfolio/refresh/route.ts`, `src/app/api/cron/daily-refresh/route.ts`, `src/app/api/portfolio/snapshot/route.ts`) (2026-02-20 06:20 MST)
+- Stabilized portfolio history reconstruction by preferring snapshot-persisted daily prices in `/api/portfolio/history` before any live fallback fetch, reducing day-to-day drift on unchanged data (`src/lib/portfolio/snapshot.ts`, `src/app/api/portfolio/history/route.ts`) (2026-02-20 06:20 MST)
+- Added regression coverage for historical fallback persistence and snapshot daily-price persistence to protect cost-basis/history stability (`tests/snapshot.test.ts`) (2026-02-20 06:20 MST)
 
 ## [0.2.0] - 2026-02-20
 

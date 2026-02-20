@@ -73,6 +73,11 @@ export type PortfolioSnapshotPayload = {
   assets: SnapshotAssetRow[];
   transactions: SnapshotTransactionRow[];
   wallets: WalletBreakdown[];
+  dailyPrices: Array<{
+    assetKey: string;
+    dayKey: string;
+    priceUsd: number | null;
+  }>;
   defiPositions: DefiPosition[];
   yieldEstimate: {
     estimatedAprPct: number | null;
@@ -88,6 +93,7 @@ export type SnapshotDeps = {
   getSpotQuotesFn?: (assetIds: Array<number | null>) => Promise<Record<string, SpotPriceQuote>>;
   getHistoricalPricesFn?: (assetKeys: string[], unixTimestamps: number[]) => Promise<Record<string, number | null>>;
   getDefiPositionsFn?: (wallets: string[]) => Promise<DefiPosition[]>;
+  historicalPriceFallbackByDay?: Record<string, number | null>;
 };
 
 function finiteOr(value: number, fallback = 0): number {
@@ -101,6 +107,7 @@ export async function computePortfolioSnapshot(wallets: string[], deps: Snapshot
   const getSpotQuotesFn = deps.getSpotQuotesFn ?? getSpotPriceQuotes;
   const getHistoricalPricesFn = deps.getHistoricalPricesFn ?? getHistoricalPricesUsdByDay;
   const getDefiPositionsFn = deps.getDefiPositionsFn ?? getAllDefiPositions;
+  const historicalPriceFallbackByDay = deps.historicalPriceFallbackByDay ?? {};
 
   const accountStates = await Promise.all(wallets.map((w) => getAccountStateFn(w)));
   const allTxArrays = await Promise.all(wallets.map((w) => getTransactionsFn(w)));
@@ -145,7 +152,36 @@ export async function computePortfolioSnapshot(wallets: string[], deps: Snapshot
   const assetKeysForHistory = ["ALGO", ...Object.keys(decimalsByAsset)];
   const txTimestamps = txns.map((txn) => txn.confirmedRoundTime);
   const historicalPrices = await getHistoricalPricesFn(assetKeysForHistory, txTimestamps);
-  const nearestHistoricalByAsset = buildNearestHistoricalIndex(historicalPrices);
+  const dailyPriceRows = await buildDailyPriceRows(assetKeysForHistory, txTimestamps, getHistoricalPricesFn);
+  const dailyHistorical = Object.fromEntries(
+    dailyPriceRows.map((row) => [`${row.assetKey}:${toProviderDayKey(row.dayKey)}`, row.priceUsd])
+  );
+  const nearestHistoricalByAsset = buildNearestHistoricalIndex({
+    ...historicalPriceFallbackByDay,
+    ...Object.fromEntries(Object.entries(dailyHistorical).filter(([, v]) => Number.isFinite(v))),
+    ...Object.fromEntries(Object.entries(historicalPrices).filter(([, v]) => Number.isFinite(v)))
+  });
+
+  const resolveHistoricalPrice = (assetKey: string, unixTs: number): number | null => {
+    const key = getHistoricalPriceKey(assetKey, unixTs);
+    const fromExact = historicalPrices[key];
+    if (fromExact !== undefined && fromExact !== null && Number.isFinite(fromExact)) {
+      return fromExact;
+    }
+    const fromDaily = dailyHistorical[key];
+    if (fromDaily !== undefined && fromDaily !== null && Number.isFinite(fromDaily)) {
+      return fromDaily;
+    }
+    const fromFallback = historicalPriceFallbackByDay[key];
+    if (fromFallback !== undefined && fromFallback !== null && Number.isFinite(fromFallback)) {
+      return fromFallback;
+    }
+    const nearest = resolveNearestHistoricalPrice(nearestHistoricalByAsset, assetKey, unixTs);
+    if (nearest !== null) {
+      return nearest;
+    }
+    return null;
+  };
 
   const getPriceQuote = (
     assetKey: string,
@@ -156,8 +192,8 @@ export async function computePortfolioSnapshot(wallets: string[], deps: Snapshot
     spotSource: SpotPriceSource;
     confidence: SpotPriceConfidence;
   } => {
-    const fromHistory = historicalPrices[getHistoricalPriceKey(assetKey, unixTs)];
-    if (fromHistory !== undefined && fromHistory !== null && Number.isFinite(fromHistory)) {
+    const fromHistory = resolveHistoricalPrice(assetKey, unixTs);
+    if (fromHistory !== null) {
       return { unitPriceUsd: fromHistory, source: "historical", spotSource: "coingecko", confidence: "high" };
     }
     const quote = spotQuotes[assetKey];
@@ -173,16 +209,7 @@ export async function computePortfolioSnapshot(wallets: string[], deps: Snapshot
     return { unitPriceUsd: null, source: "missing", spotSource: "missing", confidence: "low" };
   };
   const getHistoricalUnitPriceUsd = (assetKey: string, unixTs: number): number | null => {
-    const fromHistory = historicalPrices[getHistoricalPriceKey(assetKey, unixTs)];
-    if (fromHistory !== undefined && fromHistory !== null && Number.isFinite(fromHistory)) {
-      return fromHistory;
-    }
-
-    const nearest = resolveNearestHistoricalPrice(nearestHistoricalByAsset, assetKey, unixTs);
-    if (nearest !== null) {
-      return nearest;
-    }
-    return null;
+    return resolveHistoricalPrice(assetKey, unixTs);
   };
 
   const ownWallets = new Set(wallets);
@@ -434,6 +461,7 @@ export async function computePortfolioSnapshot(wallets: string[], deps: Snapshot
     assets,
     transactions,
     wallets: walletSummaries,
+    dailyPrices: dailyPriceRows,
     defiPositions,
     yieldEstimate: {
       estimatedAprPct,
@@ -441,6 +469,63 @@ export async function computePortfolioSnapshot(wallets: string[], deps: Snapshot
       note: "Estimated yield from detected staking/DeFi activity. Historical decomposition is partial in MVP."
     }
   };
+}
+
+async function buildDailyPriceRows(
+  assetKeys: string[],
+  txTimestamps: number[],
+  getHistoricalPricesFn: (assetKeys: string[], unixTimestamps: number[]) => Promise<Record<string, number | null>>
+): Promise<Array<{ assetKey: string; dayKey: string; priceUsd: number | null }>> {
+  const validTxTimestamps = txTimestamps.filter((ts) => Number.isFinite(ts) && ts > 0);
+  if (validTxTimestamps.length === 0) {
+    return [];
+  }
+
+  const earliestUnix = Math.min(...validTxTimestamps);
+  const latestUnix = Math.floor(Date.now() / 1000);
+  // Guard against unrealistic test/sample timestamps that would create huge ranges.
+  const maxLookbackDays = 365 * 3;
+  const earliestClampedUnix = Math.max(earliestUnix, latestUnix - maxLookbackDays * 24 * 60 * 60);
+  const startMs = startOfUtcDayMs(earliestClampedUnix * 1000);
+  const endMs = startOfUtcDayMs(latestUnix * 1000);
+
+  const queryTimestamps: number[] = [];
+  for (let ms = startMs; ms <= endMs; ms += 24 * 60 * 60 * 1000) {
+    // Query midday UTC to avoid edge effects across timezones/day boundaries.
+    queryTimestamps.push(Math.floor(ms / 1000) + 12 * 60 * 60);
+  }
+
+  const raw = await getHistoricalPricesFn(assetKeys, queryTimestamps);
+  const rows: Array<{ assetKey: string; dayKey: string; priceUsd: number | null }> = [];
+  for (const assetKey of assetKeys) {
+    for (const ts of queryTimestamps) {
+      const providerKey = getHistoricalPriceKey(assetKey, ts);
+      rows.push({
+        assetKey,
+        dayKey: toIsoDayKey(ts),
+        priceUsd: raw[providerKey] ?? null
+      });
+    }
+  }
+  return rows;
+}
+
+function startOfUtcDayMs(msTs: number): number {
+  const d = new Date(msTs);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+}
+
+function toIsoDayKey(unixTs: number): string {
+  const d = new Date(unixTs * 1000);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function toProviderDayKey(dayKeyIso: string): string {
+  const [yyyy, mm, dd] = dayKeyIso.split("-");
+  return `${dd}-${mm}-${yyyy}`;
 }
 
 type HistoricalPoint = { ts: number; priceUsd: number };
