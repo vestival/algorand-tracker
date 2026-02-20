@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -101,6 +101,8 @@ const ALL_WALLETS_SCOPE = "__all_wallets__";
 
 export function DashboardClient() {
   const { m } = useLanguage();
+  const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
   const [hideZeroBalances, setHideZeroBalances] = useState<boolean>(true);
@@ -139,6 +141,25 @@ export function DashboardClient() {
     }
     setActiveTab("overview");
   }, [searchParams]);
+
+  const setTabAndUrl = (tab: DashboardTab) => {
+    setActiveTab(tab);
+    const params = new URLSearchParams(searchParams.toString());
+    if (tab === "overview") {
+      params.delete("tab");
+    } else if (tab === "transactions") {
+      params.set("tab", "transactions");
+    } else if (tab === "defi") {
+      params.set("tab", "defi");
+    } else if (tab === "walletAnalytics") {
+      params.set("tab", "wallet-analytics");
+    } else if (tab === "settings") {
+      params.set("tab", "settings");
+    }
+
+    const nextQuery = params.toString();
+    router.replace((nextQuery ? `${pathname}?${nextQuery}` : pathname) as never, { scroll: false });
+  };
 
   const snapshotQuery = useQuery({
     queryKey: ["portfolio-snapshot"],
@@ -469,7 +490,7 @@ export function DashboardClient() {
                 activeTab === tab ? "bg-brand-700 text-white" : "bg-slate-200 text-slate-700 dark:bg-[#1E293B] dark:text-[#CBD5E1]"
               }`}
               key={tab}
-              onClick={() => setActiveTab(tab)}
+              onClick={() => setTabAndUrl(tab)}
               type="button"
             >
               {m.dashboard.tabs[tab]}
