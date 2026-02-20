@@ -172,6 +172,34 @@ npm test
 npm run build
 ```
 
+## Versioning and releases
+
+Strategos uses semantic versioning with a practical release cadence:
+
+- `patch`: bug fixes and small UI/UX improvements
+- `minor`: additive features and non-breaking product increments
+- `major`: strategic milestones or breaking changes (for example, major DeFi scope expansions)
+
+Rules:
+
+- Keep work under `## [Unreleased]` while developing
+- Cut at most one release per UTC day
+- Only cut a version when the deployment is stable and ready
+
+Release helper commands:
+
+```bash
+npm run release:patch
+npm run release:minor
+npm run release:major
+```
+
+The release script:
+
+- blocks if a release already exists for today (UTC)
+- moves `Unreleased` entries into a dated version section in `CHANGELOG.md`
+- bumps `package.json` version
+
 ## Deployment (Vercel)
 
 1. Set all required env vars in Vercel project.

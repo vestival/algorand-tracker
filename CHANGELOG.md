@@ -4,7 +4,11 @@ All notable changes to Strategos are documented in this file.
 
 ## [Unreleased]
 
+
+## [0.2.0] - 2026-02-20
+
 ### Added
+- Release automation script at `scripts/release.mjs` with semantic bump support (`patch|minor|major`), one-release-per-UTC-day guard, and automatic `Unreleased` -> dated version cutover in `CHANGELOG.md` (2026-02-20 09:32 MST)
 - Added Strategos favicon asset (`/icon.svg`) with brand-aligned dark background and white "S" monogram for browser tabs/bookmarks (2026-02-19 17:01 MST)
 - Wallet bundles (saved local scopes) in dashboard to analyze portfolio, transactions, DeFi rows, and historical chart by selected wallet groups without changing linked-wallet data (2026-02-19 14:58 MST)
 - Price provenance metadata across assets/transactions (`source` + confidence), surfaced in UI for transparency on CoinGecko/DefiLlama/cache fallbacks (2026-02-19 14:58 MST)
@@ -41,6 +45,7 @@ All notable changes to Strategos are documented in this file.
 - Unit test coverage for wallet deletion ownership/404 rules via a dedicated deletion service (`tests/wallet-delete.test.ts`) (2026-02-17 04:46 MST)
 
 ### Changed
+- Added explicit versioning policy and release commands to README, including realistic semver guidance and daily release cap behavior (2026-02-20 09:32 MST)
 - README opening section now states explicitly that Strategos is currently focused exclusively on Algorand wallets/assets/protocols (2026-02-19 17:01 MST)
 - Language toggle contrast improved in light mode so active/inactive `EN/ES` labels remain clearly readable (2026-02-19 17:01 MST)
 - Removed cryptic price-source confidence shorthand from asset/transaction tables (e.g. `configured · H`) to reduce UI ambiguity (2026-02-19 17:01 MST)

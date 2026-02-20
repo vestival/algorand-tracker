@@ -1,6 +1,6 @@
 {
   "name": "strategos",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -8,7 +8,11 @@
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "release:cut": "node scripts/release.mjs",
+    "release:patch": "node scripts/release.mjs --bump=patch",
+    "release:minor": "node scripts/release.mjs --bump=minor",
+    "release:major": "node scripts/release.mjs --bump=major"
   },
   "dependencies": {
     "@next-auth/prisma-adapter": "^1.0.7",
