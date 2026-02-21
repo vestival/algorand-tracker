@@ -28,6 +28,12 @@ function finite(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
+const VALUE_PROXY_BASE_ASSET: Record<string, string> = {
+  // tALGO (Tinyman liquid staking token) tracks ALGO with a changing conversion ratio.
+  // If full historical series is unavailable, derive an ALGO-proxy series from latest ratio.
+  "2537013734": "ALGO"
+};
+
 export function buildPortfolioHistoryFromTransactions({
   transactions,
   latestValueUsd,
@@ -54,7 +60,6 @@ export function buildPortfolioHistoryFromTransactions({
 
   if (hasLatestAnchor) {
     const balances = new Map<string, number>();
-    const txLastPriceByAssetDay = new Map<string, number>();
     const explicitDailyPriceByAssetDay = new Map<string, number>();
     const points: PortfolioHistoryPoint[] = [];
 
@@ -71,13 +76,6 @@ export function buildPortfolioHistoryFromTransactions({
       }
     }
 
-    for (const tx of normalized) {
-      if (finite(tx.unitPriceUsd) && tx.unitPriceUsd >= 0) {
-        const dayKey = toUtcDayKeyFromUnix(tx.ts);
-        txLastPriceByAssetDay.set(`${tx.assetKey}:${dayKey}`, tx.unitPriceUsd);
-      }
-    }
-
     const latestAssetSpot = new Map<string, number>();
     for (const asset of latestAssetStates ?? []) {
       if (asset.assetKey && finite(asset.priceUsd) && asset.priceUsd >= 0) {
@@ -90,11 +88,18 @@ export function buildPortfolioHistoryFromTransactions({
     const earliestDayKey = toUtcDayKeyFromUnix(earliestTxTs);
     const dayKeys = enumerateUtcDayKeys(earliestDayKey, latestDayKey);
 
+    const assetKeysForSeries = Array.from(new Set([...balances.keys(), ...normalized.map((tx) => tx.assetKey)]));
+    for (const assetKey of [...assetKeysForSeries]) {
+      const proxyBase = VALUE_PROXY_BASE_ASSET[assetKey];
+      if (proxyBase) {
+        assetKeysForSeries.push(proxyBase);
+      }
+    }
+
     const resolvedPriceByAssetDay = buildResolvedPriceSeries({
       dayKeys,
-      assetKeys: Array.from(new Set([...balances.keys(), ...normalized.map((tx) => tx.assetKey)])),
+      assetKeys: Array.from(new Set(assetKeysForSeries)),
       explicitDailyPriceByAssetDay,
-      txLastPriceByAssetDay,
       latestAssetSpot
     });
 
@@ -268,25 +273,26 @@ function buildResolvedPriceSeries({
   dayKeys,
   assetKeys,
   explicitDailyPriceByAssetDay,
-  txLastPriceByAssetDay,
   latestAssetSpot
 }: {
   dayKeys: string[];
   assetKeys: string[];
   explicitDailyPriceByAssetDay: Map<string, number>;
-  txLastPriceByAssetDay: Map<string, number>;
   latestAssetSpot: Map<string, number>;
 }) {
   const resolved = new Map<string, number>();
+  const hasAnyExplicit = new Map<string, boolean>();
 
   for (const assetKey of assetKeys) {
     const series = dayKeys.map((dayKey) => {
       const explicit = explicitDailyPriceByAssetDay.get(`${assetKey}:${dayKey}`);
       if (finite(explicit) && explicit >= 0) return explicit;
-      const txFallback = txLastPriceByAssetDay.get(`${assetKey}:${dayKey}`);
-      if (finite(txFallback) && txFallback >= 0) return txFallback;
       return null;
     });
+    hasAnyExplicit.set(
+      assetKey,
+      series.some((price) => finite(price) && price >= 0)
+    );
 
     // Forward fill
     for (let i = 1; i < series.length; i += 1) {
@@ -302,10 +308,42 @@ function buildResolvedPriceSeries({
     }
 
     const spotFallback = latestAssetSpot.get(assetKey);
-    const ultimateFallback = finite(spotFallback) ? spotFallback : 0;
+
     for (let i = 0; i < dayKeys.length; i += 1) {
-      const price = finite(series[i]) ? (series[i] as number) : ultimateFallback;
-      resolved.set(`${assetKey}:${dayKeys[i]}`, price);
+      if (finite(series[i])) {
+        resolved.set(`${assetKey}:${dayKeys[i]}`, series[i] as number);
+      }
+      const fallback = finite(series[i]) ? (series[i] as number) : finite(spotFallback) ? spotFallback : 0;
+      resolved.set(`${assetKey}:${dayKeys[i]}`, fallback);
+    }
+  }
+
+  // Second pass: for liquid staking derivatives with no direct daily history,
+  // derive a market-like series from their proxy base asset (e.g. tALGO <- ALGO).
+  for (const assetKey of assetKeys) {
+    if (hasAnyExplicit.get(assetKey)) {
+      continue;
+    }
+    const proxyBase = VALUE_PROXY_BASE_ASSET[assetKey];
+    if (!proxyBase) {
+      continue;
+    }
+    const spotFallback = latestAssetSpot.get(assetKey);
+    const proxySpot = latestAssetSpot.get(proxyBase);
+    const proxyRatio =
+      finite(spotFallback) && finite(proxySpot) && proxySpot > 0
+        ? spotFallback / proxySpot
+        : null;
+    if (!finite(proxyRatio)) {
+      continue;
+    }
+
+    for (const dayKey of dayKeys) {
+      const proxyPrice = resolved.get(`${proxyBase}:${dayKey}`);
+      if (!finite(proxyPrice) || proxyPrice < 0) {
+        continue;
+      }
+      resolved.set(`${assetKey}:${dayKey}`, proxyPrice * proxyRatio);
     }
   }
 

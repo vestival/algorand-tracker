@@ -313,7 +313,7 @@ export function DashboardClient() {
     enabled: Boolean(snapshot)
   });
 
-  const historySeries = historyQuery.data?.history ?? [];
+  const historySeries = useMemo(() => historyQuery.data?.history ?? [], [historyQuery.data?.history]);
 
   const filteredHistory = filterHistoryByRange(historySeries, historyRange);
   const historyStartValue = filteredHistory[0]?.valueUsd ?? null;
@@ -525,10 +525,21 @@ export function DashboardClient() {
     const normalized = normalizeSeriesToUtcDailyClose(walletSeries);
     return filterSeriesByRange(normalized, analyticsRange);
   }, [walletSeries, analyticsRange]);
+  const analyticsAggregateHistory = useMemo(
+    () => filterHistoryByRange(historySeries, analyticsRange),
+    [historySeries, analyticsRange]
+  );
   const aggregateWalletSeries = useMemo(() => {
+    if (analyticsMode === "aggregate" && analyticsMetric === "value") {
+      return {
+        key: "aggregate",
+        label: "Aggregate",
+        points: analyticsAggregateHistory.map((point) => ({ ts: point.ts, value: point.valueUsd }))
+      };
+    }
     const aligned = alignSeriesByTimestamp(filteredWalletSeries);
     return sumAlignedSeries(aligned);
-  }, [filteredWalletSeries]);
+  }, [analyticsAggregateHistory, analyticsMetric, analyticsMode, filteredWalletSeries]);
   const analyticsSeries = analyticsMode === "aggregate" ? [aggregateWalletSeries] : filteredWalletSeries;
   const analyticsStartValue = aggregateWalletSeries.points[0]?.value ?? null;
   const analyticsEndValue = aggregateWalletSeries.points[aggregateWalletSeries.points.length - 1]?.value ?? null;

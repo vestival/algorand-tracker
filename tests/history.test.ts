@@ -176,4 +176,33 @@ describe("buildPortfolioHistoryFromTransactions", () => {
     expect(history.length).toBeGreaterThanOrEqual(2);
     expect(history[history.length - 1]?.ts).toBe(latestTs);
   });
+
+  it("uses ALGO proxy-derived daily pricing for tALGO when direct historical series is unavailable", () => {
+    const history = buildPortfolioHistoryFromTransactions({
+      transactions: [
+        {
+          ts: Math.floor(Date.UTC(2026, 0, 1, 10, 0, 0) / 1000),
+          assetKey: "2537013734",
+          amount: 0,
+          direction: "self",
+          unitPriceUsd: 999, // must not drive historical portfolio valuation
+          feeAlgo: 0
+        }
+      ],
+      latestValueUsd: 20,
+      latestTs: "2026-01-02T23:00:00.000Z",
+      latestAssetStates: [
+        { assetKey: "ALGO", balance: 0, priceUsd: 0.1 },
+        { assetKey: "2537013734", balance: 10, priceUsd: 0.2 }
+      ],
+      dailyPrices: [
+        { assetKey: "ALGO", dayKey: "2026-01-01", priceUsd: 0.5 },
+        { assetKey: "ALGO", dayKey: "2026-01-02", priceUsd: 1.0 }
+      ]
+    });
+
+    expect(history.length).toBeGreaterThanOrEqual(2);
+    expect(history[0]?.valueUsd).toBeCloseTo(10, 6); // 10 tALGO * (0.5 ALGO * 2x ratio)
+    expect(history[history.length - 1]?.valueUsd).toBeCloseTo(20, 6);
+  });
 });
