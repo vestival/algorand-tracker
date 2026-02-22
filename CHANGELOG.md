@@ -15,6 +15,7 @@ All notable changes to Strategos are documented in this file.
 - Added regression coverage for historical fallback persistence and snapshot daily-price persistence to protect cost-basis/history stability (`tests/snapshot.test.ts`) (2026-02-20 06:20 MST)
 
 ### Added
+- Vercel Speed Insights integration enabled globally via `<SpeedInsights />` in the root layout for Core Web Vitals/performance telemetry in production (`@vercel/speed-insights`, `src/app/layout.tsx`) (2026-02-22 13:20 MST)
 - GitHub issue templates for standardized reporting/planning:
   - `bug_report.md`
   - `feature_request.md`
