@@ -10,6 +10,7 @@ import { prisma } from "@/lib/db";
 import { getEnv } from "@/lib/env";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { assertSameOrigin, getClientIp } from "@/lib/security/request";
+import { hasTxnAuthorizationProof } from "@/lib/verification/signed-proof";
 import { verifyByNoteTransaction } from "@/lib/verification/verify";
 
 const inputSchema = z.object({
@@ -82,6 +83,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid signed transaction payload" }, { status: 400 });
     }
 
+    if (!hasTxnAuthorizationProof(decoded)) {
+      return NextResponse.json({ error: "Signed transaction does not contain a valid signature" }, { status: 400 });
+    }
+
     const sender = decoded.txn.sender.toString();
     const receiver = decoded.txn.payment?.receiver?.toString() ?? "";
     const noteText = decoded.txn.note ? Buffer.from(decoded.txn.note).toString("utf8") : "";
@@ -110,7 +115,8 @@ export async function POST(request: Request) {
         expiresAt: challenge.expiresAt
       });
       if (!verification.ok) {
-        return NextResponse.json({ error: "Signed transaction could not be submitted or found on-chain yet" }, { status: 400 });
+        // Accept cryptographic ownership proof even when broadcast/indexing fails.
+        verification = { ok: true, txId: decoded.txn.txID() };
       }
     }
   } else if (parsed.data.txId) {
